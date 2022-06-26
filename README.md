@@ -16,11 +16,11 @@ uniswapStrategyBacktest("0x88e6a0c2ddd26feeb64f039a2c41296fcb3f5640", 1, 1 / 266
                         startTimestamp=1653364800, period="daily", priceToken=1)
 
 # get results from start timestamp to end timestamp for lp from quote token 
-await uniswapStrategyBacktest("0x88e6a0c2ddd26feeb64f039a2c41296fcb3f5640", 1, 1 / 2662.99, 1 / 2120.09,
+uniswapStrategyBacktest("0x88e6a0c2ddd26feeb64f039a2c41296fcb3f5640", 1, 1 / 2662.99, 1 / 2120.09,
                               startTimestamp=1653364800, endTimestamp=1653374800, period="daily", priceToken=1)
 
 # get results for n days before end timestamp for lp from quote token 
-await uniswapStrategyBacktest("0x88e6a0c2ddd26feeb64f039a2c41296fcb3f5640", 1, 1 / 2662.99, 1 / 2120.09,
+uniswapStrategyBacktest("0x88e6a0c2ddd26feeb64f039a2c41296fcb3f5640", 1, 1 / 2662.99, 1 / 2120.09,
                               endTimestamp=1653364800, days=1, period="daily", priceToken=1)
 ```
 
