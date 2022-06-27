@@ -4,11 +4,6 @@ import time
 import json
 import matplotlib.pyplot as plt
 
-now = int(time.time())
-
-THRESHOLD_LOW = 1500
-THRESHOLD_UP = 1700
-CASH_AMOUNT = 1000
 
 def plotter(data):
     time = []
@@ -26,12 +21,16 @@ def plotter(data):
     ax1.plot(time, fee)
     ax1.set_title("feeUSD")
     ax2.plot(time, closes)
-    ax2.hlines(THRESHOLD_LOW, time[0], time[-1],"r")
-    ax2.hlines(THRESHOLD_UP, time[0], time[-1], "r")
+    ax2.hlines(minRange, time[0], time[-1], "r")
+    ax2.hlines(maxRange, time[0], time[-1], "r")
     ax2.set_title("closes_price")
     ax3.plot(time, amount)
     ax3.set_title("LP_value")
     plt.show()
+
+
+now = int(time.time())
+
 
 def DateByDaysAgo(days, endDate=now):
     return endDate - days * 86400
@@ -65,8 +64,10 @@ def uniswapStrategyBacktest(pool, investmentAmount, minRange, maxRange, endTimes
 
 
 if __name__ == "__main__":
-    backtest1 = uniswapStrategyBacktest("0x88e6a0c2ddd26feeb64f039a2c41296fcb3f5640", CASH_AMOUNT, THRESHOLD_LOW,
-                                        THRESHOLD_UP, days=45,
-                                        period="daily")
-    print(backtest1)
+    minRange = 1500
+    maxRange = 1700
+    investmentAmount = 1000
+    backtest1 = uniswapStrategyBacktest("0x88e6a0c2ddd26feeb64f039a2c41296fcb3f5640", investmentAmount, minRange,
+                                        maxRange, days=45, period="daily")
+    print(json.dumps(backtest1, indent=2))
     plotter(backtest1)
