@@ -143,7 +143,7 @@ def calcFees(data, pool, priceToken, liquidity, unboundedLiquidity, investment, 
         if priceToken == 0:
             low = float(data[i]["low"])
         else:
-            low = dtemp
+            low = 1 / dtemp
 
         if float(data[i]["high"]) == 0:
             dtemp1 = 1
@@ -152,7 +152,7 @@ def calcFees(data, pool, priceToken, liquidity, unboundedLiquidity, investment, 
         if priceToken == 0:
             high = float(data[i]["high"])
         else:
-            high = dtemp1
+            high = 1 / dtemp1
 
         lowTick = getTickFromPrice(low, pool, priceToken)
         highTick = getTickFromPrice(high, pool, priceToken)
