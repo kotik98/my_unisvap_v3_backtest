@@ -50,11 +50,12 @@ def uniswapStrategyBacktest(pool, investmentAmount, minRange, maxRange, endTimes
     backtestData = getPoolHourData(pool, startTimestamp, endTimestamp, protocol)
     if priceToken == 1:
         entryPrice = 1 / float(backtestData[0]["close"])
-        decimal = int(poolData[0]["token0"]["decimals"]) - int(poolData[0]["token1"]["decimals"])
+        # decimal = int(poolData[0]["token0"]["decimals"]) - int(poolData[0]["token1"]["decimals"])
     else:
         entryPrice = float(backtestData[0]["close"])
-        decimal = int(poolData[0]["token1"]["decimals"]) - int(poolData[0]["token0"]["decimals"])
-    tokens = tokensForStrategy(minRange, maxRange, investmentAmount, float(entryPrice), decimal)
+        # decimal = int(poolData[0]["token1"]["decimals"]) - int(poolData[0]["token0"]["decimals"])
+    tokens = tokensForStrategy(minRange, maxRange, investmentAmount, float(entryPrice),
+                               int(poolData[0]["token1"]["decimals"]) - int(poolData[0]["token0"]["decimals"]))
     liquidity = liquidityForStrategy(float(entryPrice), minRange, maxRange, tokens[0], tokens[1],
                                      int(poolData[0]["token0"]["decimals"]), int(poolData[0]["token1"]["decimals"]))
     unbLiquidity = liquidityForStrategy(float(entryPrice), 1.0001 ** -887220, 1.0001 ** 887220, tokens[0],
@@ -69,13 +70,14 @@ def uniswapStrategyBacktest(pool, investmentAmount, minRange, maxRange, endTimes
 
 
 if __name__ == "__main__":
-    minRange = 800
+    minRange = 1000
     maxRange = 1200
-    investmentAmount = 100000
+    investmentAmount = 1000000
     backtest1 = uniswapStrategyBacktest("0x4e68Ccd3E89f51C3074ca5072bbAC773960dFa36".lower(), investmentAmount,
-                                        minRange, maxRange, days=15, priceToken=1, period="daily")
+                                        minRange, maxRange, days=30, priceToken=1, period="hourly")
     print(json.dumps(backtest1, indent=2))
     plotter(backtest1)
 
 # 0x4e68Ccd3E89f51C3074ca5072bbAC773960dFa36  USDT / WETH 0.3
 # 0x88e6a0c2ddd26feeb64f039a2c41296fcb3f5640  WETH / USDC 0.05
+# 0xCBCdF9626bC03E24f779434178A73a0B4bad62eD  WBTC / ETH  0.3%

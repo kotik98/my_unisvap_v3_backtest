@@ -44,7 +44,7 @@ def activeLiquidityForCandle(minimum, maximum, low, high):
         ratioTrue = 1
 
     if high > minimum and low < maximum:
-        ratio = ratioTrue * 1000
+        ratio = ratioTrue * 100
     else:
         ratio = 0
 
@@ -216,8 +216,8 @@ def calcFees(data, pool, priceToken, liquidity, unboundedLiquidity, investment, 
                 feeV = 0
                 feeUnb = 0
             else:
-                fgV = fg[0] + (fg[1] * float(data[i]["close"]))
-                feeV = feeToken0 + (feeToken1 * float(data[i]["close"]))
+                fgV = fg[1] + (fg[0] / float(data[i]["close"]))
+                feeV = feeToken1 + (feeToken0 / float(data[i]["close"]))
                 feeUnb = feeUnb0 + (feeUnb1 * float(data[i]["close"]))
 
             amountV = (tokens[1] / float(data[i]["close"])) + tokens[0]
