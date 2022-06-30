@@ -3,31 +3,32 @@ from backtest import *
 import time
 import json
 import matplotlib.pyplot as plt
+import itertools
 
 
 def plotter(data):
-    time = []
     fee = []
     closes = []
     amount = []
     fees = 0
+    times = []
     for i in range(len(data)):
-        time.append(i)
         fees = fees + data[i]["feeUSD"]
         closes.append(data[i]["close"])
         amount.append(data[i]["amountV"])
         fee.append(fees)
+        times.append((data[i]["periodStartUnix"] - data[0]["periodStartUnix"]) / (3600 * 24))
     fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(15, 10))
-    ax1.plot(time, fee)
+    ax1.plot(times, fee)
     ax1.set_title("feeUSD")
     if closes[0] < 1:
-        ax2.plot(time, [1 / i for i in closes])
+        ax2.plot(times, [1 / i for i in closes])
     else:
-        ax2.plot(time, closes)
-    ax2.hlines(minRange, time[0], time[-1], "r")
-    ax2.hlines(maxRange, time[0], time[-1], "r")
+        ax2.plot(times, closes)
+    ax2.hlines(minRange, times[0], times[-1], "r")
+    ax2.hlines(maxRange, times[0], times[-1], "r")
     ax2.set_title("closes_price")
-    ax3.plot(time, amount)
+    ax3.plot(times, amount, times, np.array(amount) + np.array(fee))
     ax3.set_title("LP_value")
     for ax in (ax1, ax2, ax3):
         ax.grid()
@@ -41,13 +42,33 @@ def DateByDaysAgo(days, endDate=now):
     return endDate - days * 86400
 
 
+def getFullPoolHourData(pool, days, startTimestamp, endTimestamp, protocol):
+    if days > 41:
+        hours_num = days * 24
+        request_quantity = math.ceil(hours_num / 1000)
+        backtestData = []
+        current_start_Timestamp = startTimestamp
+        current_end_Timestamp = startTimestamp + 1000 * 3600
+        for i in range(request_quantity):
+            backtestData.extend((getPoolHourData(pool, current_start_Timestamp, current_end_Timestamp, protocol)))
+
+            current_start_Timestamp = current_end_Timestamp
+            if hours_num - len(backtestData) < 1000:
+                current_end_Timestamp = endTimestamp
+            else:
+                current_end_Timestamp = current_end_Timestamp + 1000 * 3600
+    else:
+        backtestData = getPoolHourData(pool, startTimestamp, endTimestamp, protocol)
+    return backtestData
+
+
 # data, pool, baseID, liquidity, unboundedLiquidity, min, max, customFeeDivisor, leverage, investment, tokenRatio
 # Required = Pool ID, investmentAmount (token0 by default), minRange, maxRange, options = { days, protocol, baseToken }
 def uniswapStrategyBacktest(pool, investmentAmount, minRange, maxRange, endTimestamp=now, days=30, protocol=0,
                             priceToken=0, period="hourly"):
     poolData = poolById(pool)
     startTimestamp = DateByDaysAgo(days, endTimestamp)
-    backtestData = getPoolHourData(pool, startTimestamp, endTimestamp, protocol)
+    backtestData = getFullPoolHourData(pool, days, startTimestamp, endTimestamp, protocol)
     if priceToken == 1:
         entryPrice = 1 / float(backtestData[0]["close"])
         # decimal = int(poolData[0]["token0"]["decimals"]) - int(poolData[0]["token1"]["decimals"])
@@ -71,10 +92,10 @@ def uniswapStrategyBacktest(pool, investmentAmount, minRange, maxRange, endTimes
 
 if __name__ == "__main__":
     minRange = 1000
-    maxRange = 1200
-    investmentAmount = 1000000
+    maxRange = 5000
+    investmentAmount = 1000
     backtest1 = uniswapStrategyBacktest("0x4e68Ccd3E89f51C3074ca5072bbAC773960dFa36".lower(), investmentAmount,
-                                        minRange, maxRange, days=30, priceToken=1, period="hourly")
+                                        minRange, maxRange, days=360, priceToken=1, period="hourly")
     print(json.dumps(backtest1, indent=2))
     plotter(backtest1)
 
