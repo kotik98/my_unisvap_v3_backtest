@@ -1,8 +1,8 @@
 import requests
 
 pool_id = "0x4e68Ccd3E89f51C3074ca5072bbAC773960dFa36".lower()
-from_date = 1625505192
-to_date = 1656610194
+from_date = 1656612000
+to_date = 1625202000
 
 
 def urlForProtocol(protocol=0):
@@ -49,7 +49,6 @@ def getPoolHourData(pool, from_date, to_date, protocol=0):
             data = request.json()
             from_date = data["data"]["poolHourDatas"][len(data["data"]["poolHourDatas"]) - 1]["periodStartUnix"] + 1
             res.extend(data["data"]["poolHourDatas"])
-            print("Querying ticks, count={}".format(len(res)))
             if len(data["data"]["poolHourDatas"]) < 1000:
                 break
         return res
