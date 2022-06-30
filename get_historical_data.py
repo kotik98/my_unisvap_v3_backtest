@@ -1,8 +1,8 @@
 import requests
 
-pool_id = "0x8ad599c3a0ff1de082011efddc58f1908eb6e6d8"
-from_date = 1643155200
-to_date = 1645833600
+pool_id = "0x4e68Ccd3E89f51C3074ca5072bbAC773960dFa36".lower()
+from_date = 1625505192
+to_date = 1656610194
 
 
 def urlForProtocol(protocol=0):
@@ -17,42 +17,42 @@ def urlForProtocol(protocol=0):
     return "https://api.thegraph.com/subgraphs/name/uniswap/uniswap-v3"
 
 
-def getPoolHourData(pool, from_date, to_date, protocol=0, skip=0):
+def getPoolHourData(pool, from_date, to_date, protocol=0):
     try:
-        query = '''
-          query PoolHourDatas {
-        poolHourDatas ( where:{ pool: "%s" periodStartUnix_gte:%i periodStartUnix_lte:%i close_gt: 0}, orderBy:periodStartUnix, orderDirection:asc, first:1000, skip: %i) {
-            periodStartUnix
-            liquidity
-            high
-            low
-            pool {
-              id
-              totalValueLockedUSD
-              totalValueLockedToken1
-              totalValueLockedToken0
-              token0
-                {decimals}
-              token1
-                {decimals}
-            }
-            close
-            feeGrowthGlobal0X128
-            feeGrowthGlobal1X128
-            }
-        }
-        ''' % (pool, from_date, to_date, skip)
-
+        res = []
         url = urlForProtocol(protocol)
-
-        request = requests.post(url, json={'query': query})
-        data = request.json()
-
-        if data["data"]["poolHourDatas"]:
-            return data["data"]["poolHourDatas"]
-        else:
-            print("nothing returned from getPoolHourData")
-            return None
+        while True:
+            query = '''
+                  query PoolHourDatas {
+                poolHourDatas ( where:{ pool: "%s" periodStartUnix_gte:%i periodStartUnix_lte:%i close_gt: 0}, orderBy:periodStartUnix, orderDirection:asc, first:1000) {
+                    periodStartUnix
+                    liquidity
+                    high
+                    low
+                    pool {
+                      id
+                      totalValueLockedUSD
+                      totalValueLockedToken1
+                      totalValueLockedToken0
+                      token0
+                        {decimals}
+                      token1
+                        {decimals}
+                    }
+                    close
+                    feeGrowthGlobal0X128
+                    feeGrowthGlobal1X128
+                    }
+                }
+                ''' % (pool, from_date, to_date)
+            request = requests.post(url, json={'query': query})
+            data = request.json()
+            from_date = data["data"]["poolHourDatas"][len(data["data"]["poolHourDatas"]) - 1]["periodStartUnix"] + 1
+            res.extend(data["data"]["poolHourDatas"])
+            print("Querying ticks, count={}".format(len(res)))
+            if len(data["data"]["poolHourDatas"]) < 1000:
+                break
+        return res
 
     except Exception as e:
         print(e)
@@ -60,7 +60,6 @@ def getPoolHourData(pool, from_date, to_date, protocol=0, skip=0):
 
 
 def poolById(pool, protocol=0):
-
     try:
         query = '''
             query Pools { id: pools(where: { id: "%s" } orderBy:totalValueLockedETH, orderDirection:desc)
@@ -118,4 +117,5 @@ def poolById(pool, protocol=0):
 
 
 if __name__ == "__main__":
-    print(poolById(pool_id))
+    data = getPoolHourData(pool_id, from_date, to_date)
+    print(data)
