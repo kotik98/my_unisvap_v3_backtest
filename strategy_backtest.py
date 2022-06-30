@@ -4,9 +4,10 @@ import time
 import json
 import matplotlib.pyplot as plt
 import itertools
+import numpy as np
 
 
-def plotter(data):
+def plotter(data, minRange, maxRange, xMin, xMax):
     fee = []
     closes = []
     amount = []
@@ -25,8 +26,10 @@ def plotter(data):
         ax2.plot(times, [1 / i for i in closes])
     else:
         ax2.plot(times, closes)
-    ax2.hlines(minRange, times[0], times[-1], "r")
-    ax2.hlines(maxRange, times[0], times[-1], "r")
+    for i in range(len(minRange)):
+        ax2.fill_between(np.arange(xMin[i], xMax[i], 1 / 24), minRange[i], maxRange[i], color='r', alpha=.2)
+        # ax2.hlines(minRange[i], xMin[i], xMax[i], "r")
+        # ax2.hlines(maxRange[i], xMin[i], xMax[i], "r")
     ax2.set_title("closes_price")
     ax3.plot(times, amount, times, np.array(amount) + np.array(fee))
     ax3.set_title("LP_value")
@@ -42,7 +45,8 @@ def DateByDaysAgo(days, endDate=now):
     return endDate - days * 86400
 
 
-def getFullPoolHourData(pool, days, startTimestamp, endTimestamp, protocol):
+def getFullPoolHourData(pool, days, endTimestamp=now, protocol=0):
+    startTimestamp = DateByDaysAgo(days, endTimestamp)
     if days > 41:
         hours_num = days * 24
         request_quantity = math.ceil(hours_num / 1000)
@@ -68,7 +72,7 @@ def uniswapStrategyBacktest(pool, investmentAmount, minRange, maxRange, endTimes
                             priceToken=0, period="hourly"):
     poolData = poolById(pool)
     startTimestamp = DateByDaysAgo(days, endTimestamp)
-    backtestData = getFullPoolHourData(pool, days, startTimestamp, endTimestamp, protocol)
+    backtestData = getFullPoolHourData(pool, days, endTimestamp, protocol)
     if priceToken == 1:
         entryPrice = 1 / float(backtestData[0]["close"])
         # decimal = int(poolData[0]["token0"]["decimals"]) - int(poolData[0]["token1"]["decimals"])
@@ -90,14 +94,33 @@ def uniswapStrategyBacktest(pool, investmentAmount, minRange, maxRange, endTimes
         return hourlyBacktest
 
 
+def getPrices(pool, days, endTimestamp=now, protocol=0):
+    price = getFullPoolHourData("0x4e68Ccd3E89f51C3074ca5072bbAC773960dFa36".lower(), period)
+    if priceToken == 1:
+        for e in price:
+            e["close"] = 1 / float(e["close"])
+    return price
+
+
+def _X_percent_ITM_strategy(x, pool, investmentAmount, minRange, maxRange, endTimestamp=now, days=30, protocol=0,
+                            priceToken=0):
+    pass
+
+
 if __name__ == "__main__":
+    period = 30
+    priceToken = 1
     minRange = 1000
     maxRange = 5000
     investmentAmount = 1000
+    price = getPrices("0x4e68Ccd3E89f51C3074ca5072bbAC773960dFa36".lower(), period)
+    if priceToken == 1:
+        for e in price:
+            e["close"] = 1 / float(e["close"])
     backtest1 = uniswapStrategyBacktest("0x4e68Ccd3E89f51C3074ca5072bbAC773960dFa36".lower(), investmentAmount,
-                                        minRange, maxRange, days=360, priceToken=1, period="hourly")
+                                        minRange, maxRange, days=period, priceToken=priceToken, period="hourly")
     print(json.dumps(backtest1, indent=2))
-    plotter(backtest1)
+    plotter(backtest1, [minRange], [maxRange], [5], [15])
 
 # 0x4e68Ccd3E89f51C3074ca5072bbAC773960dFa36  USDT / WETH 0.3
 # 0x88e6a0c2ddd26feeb64f039a2c41296fcb3f5640  WETH / USDC 0.05
