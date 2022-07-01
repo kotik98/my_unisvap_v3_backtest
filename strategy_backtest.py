@@ -6,18 +6,20 @@ import matplotlib.pyplot as plt
 import itertools
 
 
-def plotter(data, ranges):
-    fee = []
-    closes = []
-    amount = []
-    fees = 0
-    times = []
-    for i in range(len(data)):
-        fees = fees + data[i]["feeUSD"]
-        closes.append(data[i]["close"])
-        amount.append(data[i]["amountV"])
-        fee.append(fees)
-        times.append((data[i]["periodStartUnix"] - data[0]["periodStartUnix"]) / (3600 * 24))
+#def plotter(data, ranges):
+#    fee = []
+#    closes = []
+#    amount = []
+#    fees = 0
+#    times = []
+#    for i in range(len(data)):
+#        fees = fees + data[i]["feeUSD"]
+#        closes.append(data[i]["close"])
+#        amount.append(data[i]["amountV"])
+#        fee.append(fees)
+#        times.append((data[i]["periodStartUnix"] - data[0]["periodStartUnix"]) / (3600 * 24))
+
+def plotter(minRange, maxRange, xMin, xMax, fee, closes, amount, times):
     fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(15, 10))
     ax1.plot(times, fee)
     ax1.set_title("feeUSD")
@@ -106,8 +108,7 @@ def uniswapStrategyBacktest(pool, investmentAmount, minRange, maxRange, startTim
 
 
 def getPrices(pool, from_date, endTimestamp=now, protocol=0):
-    price = getPoolHourData(pool,
-                            from_date=from_date, to_date=endTimestamp,
+    price = getPoolHourData(pool, from_date=from_date, to_date=endTimestamp,
                             protocol=protocol)
     if priceToken == 1:
         for e in price:
@@ -117,21 +118,53 @@ def getPrices(pool, from_date, endTimestamp=now, protocol=0):
 
 def _X_percent_ITM_strategy(percent_itm, width, pool, investmentAmount, endTimestamp=now, days=30, protocol=0,
                             priceToken=0):
-    prices = getPrices(pool, days, endTimestamp, protocol)
+    from_date = DateByDaysAgo(days, endTimestamp)
+    prices = getPrices(pool, from_date, endTimestamp, priceToken, protocol)
     time_itm = 0
     time = 0
     current_price = float(prices[0]["close"])
+    fee = []
+    closes = []
+    amount = []
+    fees = 0
+    times = []
+    xMin = []
+    xMax = []
+    minBound = []
+    maxBound = []
+    data = []
+    feesPrev = 0
     for i in range(len(prices)):
         if (current_price * ((100 - width) / 100)) < float(prices[i]["close"]) < (
                 current_price * ((100 + width) / 100)):
             time_itm += 1
         time += 1
-        if (time_itm / time) < ((100 - percent_itm) / 100):
+        if (time_itm / time) < (percent_itm / 100) or i == (len(prices) - 1):
+            minBound.append(current_price * ((100 - width) / 100))
+            maxBound.append(current_price * ((100 + width) / 100))
+            xMin.append((prices[i - time + 1]["periodStartUnix"] - prices[0]["periodStartUnix"]) / (3600 * 24))
+            xMax.append((prices[i]["periodStartUnix"] - prices[0]["periodStartUnix"]) / (3600 * 24))
             backtest_data = uniswapStrategyBacktest(pool, investmentAmount, current_price * ((100 - width) / 100),
-                                                    current_price * ((100 + width) / 100),
-                                                    prices[i - time - 1]["periodStartUnix"],
-                                                    prices[i]["periodStartUnix"],
-                                                    protocol=protocol, priceToken=priceToken, period="hourly")
+                                           current_price * ((100 + width) / 100),
+                                           prices[i - time + 1]["periodStartUnix"], prices[i]["periodStartUnix"],
+                                           protocol=protocol, priceToken=priceToken, period="hourly")
+            data.extend(backtest_data)
+            fees = 0
+            for j in range(len(data)):
+                fees = fees + data[j]["feeUSD"]
+            time = 0
+            time_itm = 0
+            investmentAmount = data[-1]["amountV"] + fees - feesPrev
+            feesPrev = fees
+            current_price = float(prices[i]["close"])
+    fees = 0
+    for j in range(len(data)):
+        fees = fees + data[j]["feeUSD"]
+        closes.append(data[j]["close"])
+        amount.append(data[j]["amountV"])
+        fee.append(fees)
+        times.append((data[j]["periodStartUnix"] - prices[0]["periodStartUnix"]) / (3600 * 24))
+    plotter(minBound, maxBound, xMin, xMax, fee, closes, amount, times)
 
 
 def _simple_bounds_strategy(bounds_width, pool_id, Amount, days):
@@ -186,14 +219,17 @@ if __name__ == "__main__":
     priceToken = 1
     minRange = 1000
     maxRange = 5000
-    investmentAmount = 1000
-    bounds_width = 0.2  # ширина в процентах от цены
-    pool_id = "0x4e68Ccd3E89f51C3074ca5072bbAC773960dFa36".lower()
+    investmentAmount = 1000000
+    # price = getPrices("0x4e68Ccd3E89f51C3074ca5072bbAC773960dFa36".lower(), DateByDaysAgo(days, now), now, priceToken)
+    # if priceToken == 1:
+    #     for e in price:
+    #         e["close"] = 1 / float(e["close"])
+    # backtest1 = uniswapStrategyBacktest("0x4e68Ccd3E89f51C3074ca5072bbAC773960dFa36".lower(), investmentAmount,
+    #                                     minRange, maxRange, days=days, priceToken=priceToken, period="hourly")
+    # print(json.dumps(backtest1, indent=2))
+    _X_percent_ITM_strategy(85, 40, "0x4e68Ccd3E89f51C3074ca5072bbAC773960dFa36".lower(), investmentAmount, days=days,
+                            priceToken=1)
 
-    backtest, bounds_for_plot = _simple_bounds_strategy(bounds_width, pool_id, investmentAmount, days)
-
-    print(json.dumps(backtest, indent=2))
-    plotter(backtest, bounds_for_plot)
 
 # 0x4e68Ccd3E89f51C3074ca5072bbAC773960dFa36  USDT / WETH 0.3
 # 0x88e6a0c2ddd26feeb64f039a2c41296fcb3f5640  WETH / USDC 0.05
