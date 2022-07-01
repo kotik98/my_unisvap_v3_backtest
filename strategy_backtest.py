@@ -182,12 +182,12 @@ def _simple_bounds_strategy(bounds_width, pool_id, Amount, days):
 
 
 if __name__ == "__main__":
-    days = 60
+    days = 15
     priceToken = 1
     minRange = 1000
     maxRange = 5000
     investmentAmount = 1000
-    bounds_width = 0.1  # ширина в процентах от цены
+    bounds_width = 0.2  # ширина в процентах от цены
     pool_id = "0x4e68Ccd3E89f51C3074ca5072bbAC773960dFa36".lower()
 
     backtest, bounds_for_plot = _simple_bounds_strategy(bounds_width, pool_id, investmentAmount, days)
