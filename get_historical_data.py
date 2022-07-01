@@ -1,5 +1,6 @@
 import requests
 
+
 pool_id = "0x4e68Ccd3E89f51C3074ca5072bbAC773960dFa36".lower()
 from_date = 1656612000
 to_date = 1625202000
@@ -115,6 +116,4 @@ def poolById(pool, protocol=0):
         return
 
 
-if __name__ == "__main__":
-    data = getPoolHourData(pool_id, from_date, to_date)
-    print(data)
+
