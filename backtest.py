@@ -8,9 +8,9 @@ from datetime import datetime
 # fg0 represents the amount of token 0, fg1 represents the amount of token1
 def calcUnboundedFees(globalfee0, prevGlobalfee0, globalfee1, prevGlobalfee1, poolSelected):
     fg0_0 = ((int(globalfee0)) / pow(2, 128)) / (pow(10, int(poolSelected[0]["token0"]["decimals"])))
-    fg0_1 = (((int(prevGlobalfee0))) / pow(2, 128)) / (pow(10, int(poolSelected[0]["token0"]["decimals"])))
+    fg0_1 = ((int(prevGlobalfee0)) / pow(2, 128)) / (pow(10, int(poolSelected[0]["token0"]["decimals"])))
     fg1_0 = ((int(globalfee1)) / pow(2, 128)) / (pow(10, int(poolSelected[0]["token1"]["decimals"])))
-    fg1_1 = (((int(prevGlobalfee1))) / pow(2, 128)) / (pow(10, int(poolSelected[0]["token1"]["decimals"])))
+    fg1_1 = ((int(prevGlobalfee1)) / pow(2, 128)) / (pow(10, int(poolSelected[0]["token1"]["decimals"])))
 
     fg0 = (fg0_0 - fg0_1)
     fg1 = (fg1_0 - fg1_1)
@@ -64,12 +64,12 @@ def tokensFromLiquidity(price, low, high, liquidity, decimal0, decimal1):
 
     sHigh = max(lowHigh)
 
-    if (sPrice <= sLow):
+    if sPrice <= sLow:
 
         amount1 = ((liquidity * pow(2, 96) * (sHigh - sLow) / sHigh / sLow) / pow(10, decimal0))
         return [0, amount1]
 
-    elif (sPrice < sHigh and sPrice > sLow):
+    elif sHigh > sPrice > sLow:
         amount0 = liquidity * (sPrice - sLow) / pow(2, 96) / pow(10, decimal1)
         amount1 = ((liquidity * pow(2, 96) * (sHigh - sPrice) / sHigh / sPrice) / pow(10, decimal0))
         return [amount0, amount1]
@@ -85,20 +85,19 @@ def tokensForStrategy(minRange, maxRange, investment, price, decimal):
     sqrtLow = math.sqrt(minRange * (pow(10, decimal)))
     sqrtHigh = math.sqrt(maxRange * (pow(10, decimal)))
 
-    if (sqrtPrice > sqrtLow and sqrtPrice < sqrtHigh):
+    if sqrtLow < sqrtPrice < sqrtHigh:
 
-        delta = investment / (
-                ((sqrtPrice - sqrtLow)) + (((1 / sqrtPrice) - (1 / sqrtHigh)) * (price * pow(10, decimal))))
+        delta = investment / ((sqrtPrice - sqrtLow) + (((1 / sqrtPrice) - (1 / sqrtHigh)) * (price * pow(10, decimal))))
         amount1 = delta * (sqrtPrice - sqrtLow)
         amount0 = delta * ((1 / sqrtPrice) - (1 / sqrtHigh)) * pow(10, decimal)
 
-    elif (sqrtPrice < sqrtLow):
-        delta = investment / ((((1 / sqrtLow) - (1 / sqrtHigh)) * price))
+    elif sqrtPrice <= sqrtLow:
+        delta = investment / (((1 / sqrtLow) - (1 / sqrtHigh)) * price)
         amount1 = 0
         amount0 = delta * ((1 / sqrtLow) - (1 / sqrtHigh))
 
-    else:
-        delta = investment / ((sqrtHigh - sqrtLow))
+    elif sqrtPrice >= sqrtHigh:
+        delta = investment / (sqrtHigh - sqrtLow)
         amount1 = delta * (sqrtHigh - sqrtLow)
         amount0 = 0
 
@@ -113,16 +112,13 @@ def liquidityForStrategy(price, low, high, tokens0, tokens1, decimal0, decimal1)
     sLow = min(lowHigh)
     sHigh = max(lowHigh)
 
-    if (sPrice <= sLow):
-
+    if sPrice <= sLow:
         return tokens0 / ((pow(2, 96) * (sHigh - sLow) / sHigh / sLow) / pow(10, decimal0))
-
-    elif (sPrice <= sHigh and sPrice > sLow):
-
+    elif sHigh > sPrice > sLow:
         liq0 = tokens0 / ((pow(2, 96) * (sHigh - sPrice) / sHigh / sPrice) / pow(10, decimal0))
         liq1 = tokens1 / ((sPrice - sLow) / pow(2, 96) / pow(10, decimal1))
         return min(liq1, liq0)
-    else:
+    elif sPrice >= sHigh:
         return tokens1 / ((sHigh - sLow) / pow(2, 96) / pow(10, decimal1))
 
 

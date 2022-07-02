@@ -77,9 +77,8 @@ def uniswapStrategyBacktest(pool, investmentAmount, minRange, maxRange, startTim
         return hourlyBacktest
 
 
-def getPrices(pool, from_date, endTimestamp=now, protocol=0):
-    price = getPoolHourData(pool, from_date=from_date, to_date=endTimestamp,
-                            protocol=protocol)
+def getPrices(pool, from_date, endTimestamp=now, priceToken=0, protocol=0):
+    price = getPoolHourData(pool, from_date=from_date, to_date=endTimestamp, protocol=protocol)
     if priceToken == 1:
         for e in price:
             e["close"] = 1 / float(e["close"])
@@ -153,51 +152,58 @@ def _2_pos_strategy(percent_itm, width, pool, investmentAmount, endTimestamp=now
     minBound = []
     maxBound = []
     data_top = []
-    daata_bottom = []
+    data_bottom = []
     for i in range(len(prices)):
-        if (current_price * ((100 - width) / 100)) < float(prices[i]["close"]) < (
-                current_price * ((100 + width) / 100)):
+        if (current_price - width) < float(prices[i]["close"]) < (current_price + width):
             time_itm += 1
         time += 1
         if (time_itm / time) < (percent_itm / 100) or i == (len(prices) - 1):
-            minBound.append(current_price * ((100 - width) / 100))
+            minBound.append(current_price - width)
             maxBound.append(current_price)
             xMin.append((prices[i - time + 1]["periodStartUnix"] - prices[0]["periodStartUnix"]) / (3600 * 24))
             xMax.append((prices[i]["periodStartUnix"] - prices[0]["periodStartUnix"]) / (3600 * 24))
             bottom = uniswapStrategyBacktest(pool, investmentAmount / 2,
-                                                  current_price * ((100 - width) / 100), current_price,
+                                                  current_price - width, current_price,
                                                   prices[i - time + 1]["periodStartUnix"],
                                                   prices[i]["periodStartUnix"],
                                                   protocol=protocol, priceToken=priceToken, period="hourly")
             minBound.append(current_price)
-            maxBound.append(current_price * ((100 + width) / 100))
+            maxBound.append(current_price+ width)
             xMin.append((prices[i - time + 1]["periodStartUnix"] - prices[0]["periodStartUnix"]) / (3600 * 24))
             xMax.append((prices[i]["periodStartUnix"] - prices[0]["periodStartUnix"]) / (3600 * 24))
             top = uniswapStrategyBacktest(pool, investmentAmount / 2,
-                                               current_price, current_price * ((100 + width) / 100),
+                                               current_price, current_price + width,
                                                prices[i - time + 1]["periodStartUnix"],
                                                prices[i]["periodStartUnix"],
                                                protocol=protocol, priceToken=priceToken, period="hourly")
             data_top.extend(top)
-            daata_bottom.extend(bottom)
+            data_bottom.extend(bottom)
             fees = 0
             for j in range(len(top)):
-                fees = fees + top[j]["feeUSD"]
+                fees += top[j]["feeUSD"]
             for j in range(len(bottom)):
-                fees = fees + bottom[j]["feeUSD"]
+                fees += bottom[j]["feeUSD"]
             time = 0
             time_itm = 0
-            investmentAmount += top[-1]["amountV"] + bottom[-1]["amountV"] + fees
+            investmentAmount = top[-1]["amountV"] + bottom[-1]["amountV"] + fees
             current_price = float(prices[i]["close"])
+    fees = 0
+    for j in range(len(data_top)):
+        fees = fees + data_top[j]["feeUSD"] + data_bottom[j]["feeUSD"]
+        closes.append(data_top[j]["close"])
+        amount.append(data_top[j]["amountV"] + data_bottom[j]["amountV"])
+        fee.append(fees)
+        times.append((data_top[j]["periodStartUnix"] - prices[0]["periodStartUnix"]) / (3600 * 24))
+    plotter(minBound, maxBound, xMin, xMax, fee, closes, amount, times)
 
 
 
 if __name__ == "__main__":
-    days = 360
+    days = 60
     priceToken = 1
     minRange = 1000
     maxRange = 5000
-    investmentAmount = 1000000
+    investmentAmount = 100000
     # price = getPrices("0x4e68Ccd3E89f51C3074ca5072bbAC773960dFa36".lower(), DateByDaysAgo(days, now), now, priceToken)
     # if priceToken == 1:
     #     for e in price:
@@ -205,7 +211,9 @@ if __name__ == "__main__":
     # backtest1 = uniswapStrategyBacktest("0x4e68Ccd3E89f51C3074ca5072bbAC773960dFa36".lower(), investmentAmount,
     #                                     minRange, maxRange, days=days, priceToken=priceToken, period="hourly")
     # print(json.dumps(backtest1, indent=2))
-    _X_percent_ITM_strategy(85, 40, "0x4e68Ccd3E89f51C3074ca5072bbAC773960dFa36".lower(), investmentAmount, days=days,
+    # _2_pos_strategy(90, 180, "0x4e68Ccd3E89f51C3074ca5072bbAC773960dFa36".lower(), investmentAmount, days=days,
+    #                         priceToken=1)
+    _X_percent_ITM_strategy(95, 10, "0x4e68Ccd3E89f51C3074ca5072bbAC773960dFa36".lower(), investmentAmount, days=days,
                             priceToken=1)
 
 # 0x4e68Ccd3E89f51C3074ca5072bbAC773960dFa36  USDT / WETH 0.3
