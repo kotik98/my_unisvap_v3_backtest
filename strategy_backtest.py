@@ -19,7 +19,7 @@ import itertools
 #        fee.append(fees)
 #        times.append((data[i]["periodStartUnix"] - data[0]["periodStartUnix"]) / (3600 * 24))
 
-def plotter(minRange, maxRange, xMin, xMax, fee, closes, amount, times):
+def plotter(minRange, maxRange, xMin, xMax, fee, closes, amount, times, reinvesting=False):
     fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(15, 10))
     ax1.plot(times, fee)
     ax1.set_title("feeUSD")
@@ -30,7 +30,10 @@ def plotter(minRange, maxRange, xMin, xMax, fee, closes, amount, times):
     for i in range(len(minRange)):
         ax2.fill_between(np.arange(xMin[i], xMax[i], 1 / 24), minRange[i], maxRange[i], color='r', alpha=.2)
     ax2.set_title("closes_price")
-    ax3.plot(times, amount, times, np.array(amount) + np.array(fee))
+    if reinvesting == False:
+        ax3.plot(times, amount, times, np.array(amount) + np.array(fee))
+    else:
+        ax3.plot(times, amount, times, np.array(amount))
     ax3.set_title("LP_value")
     for ax in (ax1, ax2, ax3):
         ax.grid()
@@ -135,8 +138,8 @@ def _X_percent_ITM_strategy(percent_itm, width, pool, investmentAmount, endTimes
     plotter(minBound, maxBound, xMin, xMax, fee, closes, amount, times)
 
 
-def _simple_bounds_strategy(width, pool_id, Amount, days, priceToken, endTimestamp=now, protocol=0):
-
+def _simple_bounds_strategy(width, pool_id, Amount, days, priceToken, endTimestamp=now, protocol=0,
+                            fee_reinvesting=False):
     bounds_width = width / 100
     from_date = DateByDaysAgo(days, endTimestamp)
     prices = getPrices(pool_id, from_date, priceToken, endTimestamp, protocol)
@@ -173,6 +176,7 @@ def _simple_bounds_strategy(width, pool_id, Amount, days, priceToken, endTimesta
     bounds = [high_b, low_b]
 
     backtest = []
+    length = 0
     for j in range(len(timestamps[0])):
         backtest.extend(uniswapStrategyBacktest(pool_id, Amount,
                                                 maxRange=bounds[0][j], minRange=bounds[1][j],
@@ -180,6 +184,12 @@ def _simple_bounds_strategy(width, pool_id, Amount, days, priceToken, endTimesta
                                                 endTimestamp=timestamps[1][j], priceToken=priceToken, period="hourly"))
         Amount = backtest[-1]["amountV"]
 
+        if fee_reinvesting == True:
+            fee_r = 0
+            for q in range(len(backtest) - length):
+                fee_r = fee_r + backtest[q]["feeUSD"]
+            length = len(backtest)
+            Amount = Amount + fee_r
     fees = 0
     closes = []
     amount = []
@@ -192,20 +202,20 @@ def _simple_bounds_strategy(width, pool_id, Amount, days, priceToken, endTimesta
         fee.append(fees)
         times.append((backtest[j]["periodStartUnix"] - prices[0]["periodStartUnix"]) / (3600 * 24))
     plotter(low_b, high_b, (np.array(start_timestamps) - start_timestamps[0]) / (3600 * 24),
-            (np.array(end_timestamps) - start_timestamps[0]) / (3600 * 24), fee, closes, amount, times)
+            (np.array(end_timestamps) - start_timestamps[0]) / (3600 * 24), fee, closes, amount, times, fee_reinvesting)
 
 
 if __name__ == "__main__":
-    days = 15
+    days = 30
     priceToken = 1
     minRange = 1000
     maxRange = 5000
-    investmentAmount = 1000000
+    investmentAmount = 1000
     pool_id = "0x4e68Ccd3E89f51C3074ca5072bbAC773960dFa36".lower()
 
     # _X_percent_ITM_strategy(85, 10, pool_id, investmentAmount, days=days,
     #                         priceToken=1)
-    _simple_bounds_strategy(10, pool_id, investmentAmount, days, priceToken=1)
+    _simple_bounds_strategy(20, pool_id, investmentAmount, days, priceToken=1, fee_reinvesting=True)
 
 # 0x4e68Ccd3E89f51C3074ca5072bbAC773960dFa36  USDT / WETH 0.3
 # 0x88e6a0c2ddd26feeb64f039a2c41296fcb3f5640  WETH / USDC 0.05
