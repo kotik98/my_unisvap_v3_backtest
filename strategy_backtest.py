@@ -38,6 +38,9 @@ def plotter(minRange, maxRange, xMin, xMax, fee, closes, amount, times, reinvest
     ax3.set_title("LP_value")
     for ax in (ax1, ax2, ax3):
         ax.grid()
+    # with open("output.txt", "r+") as file1:
+    #     for l in file1.readlines():
+    #         ax2.hlines(float(l), times[0], times[-1], linewidth=1, color='r')
     plt.show()
 
 
@@ -48,11 +51,8 @@ def DateByDaysAgo(days, endDate=now):
     return endDate - days * 86400
 
 
-# data, pool, baseID, liquidity, unboundedLiquidity, min, max, customFeeDivisor, leverage, investment, tokenRatio
-# Required = Pool ID, investmentAmount (token0 by default), minRange, maxRange, options = { days, protocol, baseToken }
 def uniswapStrategyBacktest(pool, investmentAmount, minRange, maxRange, startTimestamp=0, endTimestamp=now, days=30,
-                            protocol=0,
-                            priceToken=0, period="hourly"):
+                            protocol=0, priceToken=0, period="hourly"):
     poolData = poolById(pool)
     if startTimestamp == 0:
         startTimestamp = DateByDaysAgo(days, endTimestamp)
@@ -198,6 +198,7 @@ def _2_pos_strategy(percent_itm, width, pool, investmentAmount, endTimestamp=now
     plotter(minBound, maxBound, xMin, xMax, fee, closes, amount, times)
 
 
+
 def _simple_bounds_strategy(width, pool_id, Amount, days, priceToken, endTimestamp=now, protocol=0,
                             fee_reinvesting=False):
     bounds_width = width / 100
@@ -265,28 +266,44 @@ def _simple_bounds_strategy(width, pool_id, Amount, days, priceToken, endTimesta
             (np.array(end_timestamps) - start_timestamps[0]) / (3600 * 24), fee, closes, amount, times, fee_reinvesting)
 
 
+def relative_volume_strategy(width, pool, investmentAmount, endTimestamp=now, days=30, protocol=0, priceToken=0):
+    from_date = DateByDaysAgo(days, endTimestamp)
+    pass
+
+
 if __name__ == "__main__":
-    days = 80
+    days = 20
+
     priceToken = 1
-    minRange = 1000
-    maxRange = 5000
+    minRange = 1900
+    maxRange = 2100
     investmentAmount = 100000
-    # price = getPrices("0x4e68Ccd3E89f51C3074ca5072bbAC773960dFa36".lower(), DateByDaysAgo(days, now), now, priceToken)
-    # if priceToken == 1:
-    #     for e in price:
-    #         e["close"] = 1 / float(e["close"])
-    # backtest1 = uniswapStrategyBacktest("0x4e68Ccd3E89f51C3074ca5072bbAC773960dFa36".lower(), investmentAmount,
+
+    # data = uniswapStrategyBacktest("0x4e68Ccd3E89f51C3074ca5072bbAC773960dFa36".lower(), investmentAmount,
     #                                     minRange, maxRange, days=days, priceToken=priceToken, period="hourly")
-    # print(json.dumps(backtest1, indent=2))
 
     csv_data_saver(pool_id, days)
 
-    _2_pos_strategy(90, 180, pool_id, investmentAmount, days=days,
-                    priceToken=1)
-    # _X_percent_ITM_strategy(95, 10, pool_id, investmentAmount, days=days,
+    # fee = []
+    # closes = []
+    # amount = []
+    # fees = 0
+    # times = []
+    # for i in range(len(data)):
+    #     fees = fees + data[i]["feeUSD"]
+    #     closes.append(data[i]["close"])
+    #     amount.append(data[i]["amountV"])
+    #     fee.append(fees)
+    #     times.append((data[i]["periodStartUnix"] - data[0]["periodStartUnix"]) / (3600 * 24))
+    # plotter([minRange], [maxRange], [0], [days], fee, closes, amount, times)
+    # print(json.dumps(data, indent=2))
+
+    # _2_pos_strategy(100, 180, "0x4e68Ccd3E89f51C3074ca5072bbAC773960dFa36".lower(), investmentAmount, days=days,
     #                         priceToken=1)
 
-    # _simple_bounds_strategy(10, pool_id, investmentAmount, days, priceToken=1, fee_reinvesting=True)
+    # _X_percent_ITM_strategy(95, 10, "0x4e68Ccd3E89f51C3074ca5072bbAC773960dFa36".lower(), investmentAmount, days=days,
+    #                         priceToken=1)
+
 
 # 0x4e68Ccd3E89f51C3074ca5072bbAC773960dFa36  USDT / WETH 0.3
 # 0x88e6a0c2ddd26feeb64f039a2c41296fcb3f5640  WETH / USDC 0.05
