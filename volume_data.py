@@ -1,17 +1,11 @@
-import config
 from binance.client import Client
-from binance.enums import *
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 
-TRADE_SYMBOL = 'ETHUSDT'
 
-client = Client(config.ApiKey, config.SecretKey, tld='com')
-
-
-def getMinuteData(client, symbol, interval, lookback):
-    frame = pd.DataFrame(client.get_historical_klines(symbol, interval, lookback + 'day ago UTC'))
+def getData(client, symbol, interval, date_from, date_to):
+    frame = pd.DataFrame(client.get_historical_klines(symbol, interval, date_from, date_to))
     frame = frame.iloc[:, :6]
     frame.columns = ['Time', 'Open', 'High', 'Low', 'Close', 'Volume']
     frame = frame.set_index('Time')
@@ -20,7 +14,7 @@ def getMinuteData(client, symbol, interval, lookback):
     return frame
 
 
-def get_volume_for_bounds(trading_volume, bounds_min, bounds_max):
+def volume_for_bounds(trading_volume, bounds_min, bounds_max):
     volume = 0
     for i in range(len(trading_volume[1])):
         if trading_volume[1][i] < bounds_max and trading_volume[1][i] > bounds_min:
@@ -28,25 +22,47 @@ def get_volume_for_bounds(trading_volume, bounds_min, bounds_max):
     return volume
 
 
-def get_volume_visualization(trading_volume, bins_num):
+def volume_visualization(trading_volume, bins_num):
     price_min = min(trading_volume[1])
     price_max = max(trading_volume[1])
     bins_bounds = np.linspace(price_min, price_max, bins_num + 1)
     volume = np.zeros(bins_num)
     bins_bounds_visualization = np.zeros(bins_num)
     for j in range(bins_num):
-        volume[j] = get_volume_for_bounds(trading_volume, bins_bounds[j], bins_bounds[j + 1])
+        volume[j] = volume_for_bounds(trading_volume, bins_bounds[j], bins_bounds[j + 1])
         bins_bounds_visualization[j] = (bins_bounds[j] + bins_bounds[j + 1]) / 2
     bin_width = (bins_bounds_visualization[0] - bins_bounds[0]) * 2
     plt.bar(bins_bounds_visualization, volume, width=bin_width)
+    with open("data/levels.txt", "r+") as file1:
+        for l in file1.readlines():
+            plt.axvline(float(l), linewidth=1, color='r')
     plt.show()
 
 
-df = getMinuteData(client, TRADE_SYMBOL, '15m', '100')
-trading_volume = np.ndarray((2, len(df)))
-for i in range(len(df)):
-    trading_volume[0][i] = df.Volume[i] * df.Close[i]
-    trading_volume[1][i] = df.Close[i]
+def get_volume_data(symbol, interval, date_from, date_to):
+    client = Client()
+    df = getData(client, symbol, interval, date_from, date_to)
+    trading_volume = np.ndarray((2, len(df)))
+    for i in range(len(df)):
+        trading_volume[0][i] = df.Volume[i] * df.Close[i]
+        trading_volume[1][i] = df.Close[i]
+    return trading_volume
 
-print(get_volume_for_bounds(trading_volume, 1000, 1200))
-get_volume_visualization(trading_volume, 80)
+
+def relative_volume_plot(trading_volume):
+    levels = []
+    fig, ax = plt.subplots(figsize=(15, 15))
+    with open("data/levels.txt", "r+") as file1:
+        for l in file1.readlines():
+            levels.append(float(l))
+            plt.axvline(float(l), linewidth=1, color='r')
+    levels.sort()
+    for j in range(len(levels) - 1):
+        rel_volume = volume_for_bounds(trading_volume, levels[j], levels[j + 1]) / abs(levels[j + 1] - levels[j])
+        ax.fill_between(np.arange(levels[j], levels[j + 1], 1), 0, rel_volume, color='b', alpha=.5)
+    plt.show()
+
+if __name__ == "__main__":
+    trading_volume = get_volume_data("ETHUSDT", "1h", "1 Jan 2020", "1 Jan 2021")
+    volume_visualization(trading_volume, 80)
+    relative_volume_plot(trading_volume)
