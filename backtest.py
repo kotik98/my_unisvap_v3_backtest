@@ -2,6 +2,8 @@ from calc import *
 import numpy as np
 import math
 from datetime import datetime
+import ast
+import pandas as pd
 
 
 # calculate the amount of fees earned in 1 period by 1 unit of unbounded liquidity
@@ -124,29 +126,35 @@ def liquidityForStrategy(price, low, high, tokens0, tokens1, decimal0, decimal1)
 
 # Calculate estimated fees
 def calcFees(data, pool, priceToken, liquidity, unboundedLiquidity, investment, min, max):
+    # backtestData = pd.DataFrame(
+    #     columns=["unixDT", "fg0", "fg1", "activeliquidity", "feeToken0", "feeToken1", "tokens", "fgV", "feeV",
+    #              "feeUnb", "amountV", "amountTR", "feeUSD", "close", "baseClose"])
+    backtestData = []
     for i in range(len(data)):
         if i == 0:
             fg = [0, 0]
         else:
-            fg = calcUnboundedFees(float(data[i]["feeGrowthGlobal0X128"]), float(data[(i - 1)]["feeGrowthGlobal0X128"]),
-                                   float(data[i]["feeGrowthGlobal1X128"]), float(data[(i - 1)]["feeGrowthGlobal1X128"]),
+            fg = calcUnboundedFees(float(data["feeGrowthGlobal0X128"].values[i]),
+                                   float(data["feeGrowthGlobal0X128"].values[(i - 1)]),
+                                   float(data["feeGrowthGlobal1X128"].values[i]),
+                                   float(data["feeGrowthGlobal1X128"].values[(i - 1)]),
                                    pool)
 
-        if float(data[i]["low"]) == 0:
+        if float(data["low"].values[i]) == 0:
             dtemp = 1
         else:
-            dtemp = float(data[i]["low"])
+            dtemp = float(data["low"].values[i])
         if priceToken == 0:
-            low = float(data[i]["low"])
+            low = float(data["low"].values[i])
         else:
             low = 1 / dtemp
 
-        if float(data[i]["high"]) == 0:
+        if float(data["high"].values[i]) == 0:
             dtemp1 = 1
         else:
-            dtemp1 = float(data[i]["high"])
+            dtemp1 = float(data["high"].values[i])
         if priceToken == 0:
-            high = float(data[i]["high"])
+            high = float(data["high"].values[i])
         else:
             high = 1 / dtemp1
 
@@ -158,11 +166,11 @@ def calcFees(data, pool, priceToken, liquidity, unboundedLiquidity, investment, 
         activeLiquidity = activeLiquidityForCandle(minTick, maxTick, lowTick, highTick)
 
         if priceToken == 1:
-            price = 1 / float(data[i]["close"])
-            firstClose = 1 / float(data[0]["close"])
+            price = 1 / float(data["close"].values[i])
+            firstClose = 1 / float(data["close"].values[0])
         else:
-            price = float(data[i]["close"])
-            firstClose = float(data[0]["close"])
+            price = float(data["close"].values[i])
+            firstClose = float(data["close"].values[0])
 
         tokens = tokensFromLiquidity(price, min, max, liquidity, int(pool[0]["token0"]["decimals"]),
                                      int(pool[0]["token1"]["decimals"]))
@@ -181,7 +189,11 @@ def calcFees(data, pool, priceToken, liquidity, unboundedLiquidity, investment, 
             feeToken1 = fg[1] * liquidity * activeLiquidity / 100
             feeUnb1 = fg[0] * unboundedLiquidity
 
-        latestRec = data[(len(data) - 1)]
+        # latestRec = data[(len(data) - 1)]
+        latest_TVL_USD = ast.literal_eval(data["pool"].values[-2])["totalValueLockedUSD"]
+        latest_TVL0 = ast.literal_eval(data["pool"].values[-2])["totalValueLockedToken0"]
+        latest_TVL1 = ast.literal_eval(data["pool"].values[-2])["totalValueLockedToken1"]
+        latest_close = data["close"].values[-2]
 
         tokenRatioFirstClose = tokensFromLiquidity(firstClose, min, max, liquidity, int(pool[0]["token0"]["decimals"]),
                                                    int(pool[0]["token1"]["decimals"]))
@@ -195,15 +207,15 @@ def calcFees(data, pool, priceToken, liquidity, unboundedLiquidity, investment, 
                 feeV = 0
                 feeUnb = 0
             else:
-                fgV = fg[0] + (fg[1] * float(data[i]["close"]))
-                feeV = feeToken0 + (feeToken1 * float(data[i]["close"]))
-                feeUnb = feeUnb0 + (feeUnb1 * float(data[i]["close"]))
+                fgV = fg[0] + (fg[1] * float(data["close"].values[i]))
+                feeV = feeToken0 + (feeToken1 * float(data["close"].values[i]))
+                feeUnb = feeUnb0 + (feeUnb1 * float(data["close"].values[i]))
 
-            amountV = tokens[0] + (tokens[1] * float(data[i]["close"]))
-            feeUSD = feeV * float(latestRec["pool"]["totalValueLockedUSD"]) / (
-                    (float(latestRec["pool"]["totalValueLockedToken1"]) * float(latestRec["close"])) + float(
-                latestRec["pool"]["totalValueLockedToken0"]))
-            amountTR = investment + (amountV - ((x0 * float(data[i]["close"])) + y0))
+            amountV = tokens[0] + (tokens[1] * float(data["close"].values[i]))
+            feeUSD = feeV * float(latest_TVL_USD) / (
+                    (float(latest_TVL1) * float(latest_close)) + float(
+                latest_TVL0))
+            amountTR = investment + (amountV - ((x0 * float(data["close"].values[i])) + y0))
 
         elif (priceToken == 1):
 
@@ -212,19 +224,24 @@ def calcFees(data, pool, priceToken, liquidity, unboundedLiquidity, investment, 
                 feeV = 0
                 feeUnb = 0
             else:
-                fgV = fg[1] + (fg[0] / float(data[i]["close"]))
-                feeV = feeToken1 + (feeToken0 / float(data[i]["close"]))
-                feeUnb = feeUnb0 + (feeUnb1 * float(data[i]["close"]))
+                fgV = fg[1] + (fg[0] / float(data["close"].values[i]))
+                feeV = feeToken1 + (feeToken0 / float(data["close"].values[i]))
+                feeUnb = feeUnb0 + (feeUnb1 * float(data["close"].values[i]))
 
-            amountV = (tokens[1] / float(data[i]["close"])) + tokens[0]
-            feeUSD = feeV * float(latestRec["pool"]["totalValueLockedUSD"]) / (
-                    float(latestRec["pool"]["totalValueLockedToken1"]) + (
-                    float(latestRec["pool"]["totalValueLockedToken0"]) / float(latestRec["close"])))
-            amountTR = investment + (amountV - ((x0 * (1 / float(data[i]["close"]))) + y0))
+            amountV = (tokens[1] / float(data["close"].values[i])) + tokens[0]
+            feeUSD = feeV * float(latest_TVL_USD) / (
+                    float(latest_TVL1) + (
+                    float(latest_TVL0) / float(latest_close)))
+            amountTR = investment + (amountV - ((x0 * (1 / float(data["close"].values[i]))) + y0))
 
-        date = data[i]["periodStartUnix"]
+        date = data["periodStartUnix"].values[i]
 
-        data[i].update({
+        # backtestData.append(
+        #     [date, fg[0], fg[1], activeLiquidity, feeToken0, feeToken1, tokens, fgV, feeV, feeUnb, amountV, amountTR,
+        #      feeUSD, float(data["close"].values[i]), float(data["close"].values[i])])
+
+
+        backtestData.append({
             "unixDT": date,
             "fg0": fg[0],
             "fg1": fg[1],
@@ -238,10 +255,10 @@ def calcFees(data, pool, priceToken, liquidity, unboundedLiquidity, investment, 
             "amountV": amountV,
             "amountTR": amountTR,
             "feeUSD": feeUSD,
-            "close": float(data[i]["close"]),
-            "baseClose": float(data[i]["close"])
+            "close": float(data["close"].values[i]),
+            "baseClose": float(data["close"].values[i])
         })
-    return data
+    return backtestData
 
 
 # Pivot hourly estimated fee data (generated by calcFees) into daily values
@@ -284,9 +301,9 @@ def pivotFeeData(data, priceToken, investment):
 
             if datetime.utcfromtimestamp(currentDate).year == datetime.utcfromtimestamp(
                     currentPriceTick["unixDT"]).year and datetime.utcfromtimestamp(
-                    currentDate).month == datetime.utcfromtimestamp(
-                    currentPriceTick["unixDT"]).month and datetime.utcfromtimestamp(
-                    currentDate).day == datetime.utcfromtimestamp(currentPriceTick["unixDT"]).day:
+                currentDate).month == datetime.utcfromtimestamp(
+                currentPriceTick["unixDT"]).month and datetime.utcfromtimestamp(
+                currentDate).day == datetime.utcfromtimestamp(currentPriceTick["unixDT"]).day:
 
                 currentPriceTick["feeToken0"] = currentPriceTick["feeToken0"] + data[i]["feeToken0"]
                 currentPriceTick["feeToken1"] = currentPriceTick["feeToken1"] + data[i]["feeToken1"]

@@ -1,9 +1,14 @@
 import requests
+import pandas as pd
+import time
 
+from strategy_backtest import DateByDaysAgo
 
 pool_id = "0x4e68Ccd3E89f51C3074ca5072bbAC773960dFa36".lower()
-from_date = 1656612000
-to_date = 1625202000
+from_date = 1651611600
+to_date = 1654290000
+
+now = int(time.time())
 
 
 def urlForProtocol(protocol=0):
@@ -57,6 +62,22 @@ def getPoolHourData(pool, from_date, to_date, protocol=0):
     except Exception as e:
         print(e)
         return
+
+
+def csv_data_saver(pool, days, end_timestamp=now, protocol=0):
+    from_date = DateByDaysAgo(days, end_timestamp)
+    data = pd.DataFrame(getPoolHourData(pool, from_date, end_timestamp, protocol))
+    data.to_csv("pool_hour_data.csv")
+
+
+def get_pool_hour_data_from_csv(startTimestamp, endTimestamp):
+    data = pd.read_csv("pool_hour_data.csv")
+    for i in range(len(data)):
+        if data["periodStartUnix"].values[i] == startTimestamp:
+            low_index = i
+        if data["periodStartUnix"].values[i] == endTimestamp:
+            high_index = i + 1
+    return data[low_index:high_index]
 
 
 def poolById(pool, protocol=0):
@@ -116,4 +137,4 @@ def poolById(pool, protocol=0):
         return
 
 
-
+csv_data_saver("0x4e68Ccd3E89f51C3074ca5072bbAC773960dFa36".lower(), from_date, to_date)
