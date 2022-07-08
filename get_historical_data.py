@@ -75,7 +75,7 @@ def get_pool_hour_data_from_csv(startTimestamp, endTimestamp):
     for i in range(len(data)):
         if data["periodStartUnix"].values[i] == startTimestamp:
             low_index = i
-        if data["periodStartUnix"].values[i] == endTimestamp:
+        if endTimestamp - data["periodStartUnix"].values[-1] < 3600: # округление до ближайшего часа
             high_index = i + 1
     return data[low_index:high_index]
 
@@ -137,4 +137,4 @@ def poolById(pool, protocol=0):
         return
 
 
-csv_data_saver("0x4e68Ccd3E89f51C3074ca5072bbAC773960dFa36".lower(), from_date, to_date)
+#csv_data_saver("0x4e68Ccd3E89f51C3074ca5072bbAC773960dFa36".lower(), from_date, to_date)
