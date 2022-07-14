@@ -79,7 +79,7 @@ timestamp. Optional.
 **activeliquidity** = the % of the strategies liquidity that was active within the specified period.    
 **feeUSD** = the total fees in USD   
 
-
+## **Check out our new strategies in strategy_backtest.py !**
   
 
 

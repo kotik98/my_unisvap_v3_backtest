@@ -3,10 +3,13 @@ from backtest import *
 import time
 import json
 import matplotlib.pyplot as plt
-import itertools
+from levels import *
+from volume_data import *
 import numpy as np
+import calendar
+from datetime import datetime
 
-from visualization import plotter, plotter_for_distribution
+from visualization import *
 
 now = int(time.time())
 
@@ -36,14 +39,11 @@ def uniswapStrategyBacktest(pool, investmentAmount, minRange, maxRange, startTim
                                         int(poolData[0]["token1"]["decimals"]))
     hourlyBacktest = calcFees(backtestData, poolData, priceToken, liquidity, unbLiquidity, investmentAmount, minRange,
                               maxRange)
-    if period == "daily":
-        return pivotFeeData(hourlyBacktest, priceToken, investmentAmount)
-    else:
-        return hourlyBacktest
+    return hourlyBacktest
 
 
 def getPrices(priceToken=0):
-    price = pd.read_csv("pool_hour_data.csv")
+    price = pd.read_csv("data/pool_hour_data.csv")
     if priceToken == 1:
         for i in range(len(price)):
             price["close"].values[i] = 1 / float(price["close"].values[i])
@@ -52,6 +52,7 @@ def getPrices(priceToken=0):
 
 def _X_percent_ITM_strategy(percent_itm, width, pool, investmentAmount, endTimestamp=now, days=30, protocol=0,
                             priceToken=0):
+    csv_data_saver(pool, days, endTimestamp, protocol)
     prices = getPrices(priceToken)
     time_itm = 0
     time = 0
@@ -86,8 +87,8 @@ def _X_percent_ITM_strategy(percent_itm, width, pool, investmentAmount, endTimes
             fees = 0
             for j in range(len(backtest_data)):
                 fees = fees + backtest_data[j]["feeUSD"]
-            time = 0
-            time_itm = 0
+            time = 1
+            time_itm = 1
             investmentAmount = data[-1]["amountV"] + fees
             current_price = float(prices["close"].values[i])
     fees = 0
@@ -100,8 +101,8 @@ def _X_percent_ITM_strategy(percent_itm, width, pool, investmentAmount, endTimes
     plotter(minBound, maxBound, xMin, xMax, fee, closes, amount, times)
 
 
-def _2_pos_strategy(percent_itm, width, pool, investmentAmount, endTimestamp=now, days=30, protocol=0,
-                    priceToken=0):
+def _2_pos_strategy(percent_itm, width, pool, investmentAmount, endTimestamp=now, days=30, protocol=0, priceToken=0):
+    csv_data_saver(pool, days, endTimestamp, protocol)
     prices = getPrices(priceToken)
     time_itm = 0
     time = 0
@@ -116,6 +117,8 @@ def _2_pos_strategy(percent_itm, width, pool, investmentAmount, endTimestamp=now
     minBound = []
     maxBound = []
     data_top = []
+    relocations = []
+    actual_fee = []
     data_bottom = []
     for i in range(len(prices)):
         if (current_price - width) < float(prices["close"].values[i]) < (current_price + width):
@@ -144,27 +147,39 @@ def _2_pos_strategy(percent_itm, width, pool, investmentAmount, endTimestamp=now
                                           protocol=protocol, priceToken=priceToken, period="hourly")
             data_top.extend(top)
             data_bottom.extend(bottom)
+            relocations.append(i + 1)
             fees = 0
             for j in range(len(top)):
                 fees += top[j]["feeUSD"]
             for j in range(len(bottom)):
                 fees += bottom[j]["feeUSD"]
-            time = 0
-            time_itm = 0
+            time = 1
+            time_itm = 1
             investmentAmount = top[-1]["amountV"] + bottom[-1]["amountV"] + fees
-            current_price = float(prices["close"].values[i])
+            if float(prices["close"].values[i]) > current_price:
+                current_price = current_price + width
+            else:
+                current_price = current_price - width
     fees = 0
+    actual_fees = 0
+    k = 0
     for j in range(len(data_top)):
+        if j == relocations[k]:
+            k += 1
+            actual_fees = 0
         fees = fees + data_top[j]["feeUSD"] + data_bottom[j]["feeUSD"]
+        actual_fees = actual_fees + data_top[j]["feeUSD"] + data_bottom[j]["feeUSD"]
         closes.append(data_top[j]["close"])
         amount.append(data_top[j]["amountV"] + data_bottom[j]["amountV"])
         fee.append(fees)
+        actual_fee.append(actual_fees)
         times.append((data_top[j]["unixDT"] - prices["periodStartUnix"].values[0]) / (3600 * 24))
-    plotter(minBound, maxBound, xMin, xMax, fee, closes, amount, times)
+    plotter_for_2_pos_strategy(minBound, maxBound, xMin, xMax, fee, closes, amount, times, actual_fee)
 
 
 def _simple_bounds_strategy(width, pool_id, Amount, days, priceToken, endTimestamp=now, protocol=0,
                             fee_reinvesting=False):
+    csv_data_saver(pool_id, days, endTimestamp, protocol)
     bounds_width = width / 100
     from_date = DateByDaysAgo(days, endTimestamp)
     prices = getPrices(priceToken)
@@ -276,28 +291,159 @@ def normal_distribution_strategy(sigma, pool_id, Amount, days, priceToken, endTi
         times[i] = times[i] - data[0]["unixDT"]
         fees[i] = sum(fee[:i])
 
-
-    plotter_for_distribution(low_bound, high_bound, start / (3600 * 24), end / (3600 * 24), fees, closes, amount,
-                             times / (3600 * 24))
+    plotter(low_bound, high_bound, start / (3600 * 24), end / (3600 * 24), fees, closes, amount, times / (3600 * 24))
 
 
-def relative_volume_strategy(width, pool, investmentAmount, endTimestamp=now, days=30, protocol=0, priceToken=0):
+def get_lvls_and_rel_vol(symbol, from_date, days_ago=365):
+    curr_date = datetime.fromtimestamp(from_date)
+    past_date = datetime.fromtimestamp(from_date - (days_ago * 24 * 3600))
+    past_month_name = calendar.month_abbr[past_date.month]
+    current_month_name = calendar.month_abbr[curr_date.month]
+    levels, _ = get_levels(symbol, "1h", "{} {} {}".format(past_date.day, past_month_name, past_date.year),
+                           "{} {} {}".format(curr_date.day, current_month_name, curr_date.year))
+    rel_vol = relative_volume(symbol, "1h", "{} {} {}".format(past_date.day, past_month_name, past_date.year),
+                              "{} {} {}".format(curr_date.day, current_month_name, curr_date.year), levels)
+    return levels, rel_vol
+
+
+def analyzer(z1, z2, z1_width, z2_width, symbol, from_date, current_price, days, update_z1, update_z2):
+    levels, rel_vol = get_lvls_and_rel_vol(symbol, from_date, days)
+    if current_price < levels[1][0] or current_price > levels[len(levels) - 2][0]:
+        if update_z2:
+            z2["bottom"] = current_price * ((100 - z2_width) / 100)
+            z2["top"] = current_price * ((100 + z2_width) / 100)
+        if update_z1:
+            z1["bottom"] = current_price * ((100 - z1_width) / 100)
+            z1["top"] = current_price * ((100 + z1_width) / 100)
+        return
+    k = -1
+    while current_price > levels[k + 1][0]:
+        k += 1
+    right_max = k + 1
+    while right_max < len(rel_vol) - 1 and rel_vol[right_max] < rel_vol[right_max + 1]:
+        right_max += 1
+    left_max = k
+    while left_max > 0 and rel_vol[left_max] < rel_vol[left_max - 1]:
+        left_max -= 1
+    if update_z1:
+        z1["bottom"] = levels[k][0]
+        z1["top"] = levels[k + 1][0]
+    if update_z2:
+        z2["bottom"] = levels[left_max][0]
+        z2["top"] = levels[right_max][0]
+
+
+def relative_volume_strategy(z1_width, z2_width, percent_itm, symbol, pool, investmentAmount, endTimestamp=now, days=30,
+                             protocol=0, priceToken=0):
     from_date = DateByDaysAgo(days, endTimestamp)
-    pass
+    csv_data_saver(pool, days, endTimestamp, protocol)
+    prices = getPrices(priceToken)
+    time_itm = 0
+    time1 = 0
+    time2 = 0
+    fee = []
+    closes = []
+    amount = []
+    fees = 0
+    times = []
+    xMin = []
+    xMax = []
+    minBound = []
+    maxBound = []
+    data1 = []
+    data2 = []
+    z1 = {
+        "proportion": .5,
+        "bottom": None,
+        "top": None
+    }
+    z2 = {
+        "proportion": .5,
+        "bottom": None,
+        "top": None
+    }
+    analyzer(z1, z2, z1_width, z2_width, symbol, from_date, float(prices["close"].values[0]), 365, True, True)
+    for i in range(len(prices)):
+        if z1["bottom"] < float(prices["close"].values[i]) < z1["top"]:
+            time_itm += 1
+        time1 += 1
+        time2 += 1
+
+        if i == (len(prices) - 1) or (time_itm / time1) < (percent_itm / 100) or z2["bottom"] > float(
+                prices["close"].values[i]) or float(prices["close"].values[i]) > z2["top"]:
+
+            update_z1 = False
+            update_z2 = False
+
+            if (time_itm / time1) < (percent_itm / 100) or i == (len(prices) - 1):
+
+                minBound.append(z1["bottom"])
+                maxBound.append(z1["top"])
+                xMin.append(
+                    (prices["periodStartUnix"].values[i - time1 + 1] - prices["periodStartUnix"].values[0]) / (
+                            3600 * 24))
+                xMax.append((prices["periodStartUnix"].values[i] - prices["periodStartUnix"].values[0]) / (3600 * 24))
+                backtest_z1 = uniswapStrategyBacktest(pool, z1["proportion"] * investmentAmount,
+                                                      z1["bottom"], z1["top"],
+                                                      prices["periodStartUnix"].values[i - time1 + 1],
+                                                      prices["periodStartUnix"].values[i],
+                                                      protocol=protocol, priceToken=priceToken, period="hourly")
+                data1.extend(backtest_z1)
+                time1 = 1
+                time_itm = 1
+                fees = 0
+                for j in range(len(backtest_z1)):
+                    fees += backtest_z1[j]["feeUSD"]
+                investmentAmount = backtest_z1[-1]["amountV"] + fees
+                update_z1 = True
+
+            if z2["bottom"] > float(prices["close"].values[i]) or float(prices["close"].values[i]) > z2["top"] or i == (
+                    len(prices) - 1):
+
+                minBound.append(z2["bottom"])
+                maxBound.append(z2["top"])
+                xMin.append(
+                    (prices["periodStartUnix"].values[i - time2 + 1] - prices["periodStartUnix"].values[0]) / (
+                            3600 * 24))
+                xMax.append((prices["periodStartUnix"].values[i] - prices["periodStartUnix"].values[0]) / (3600 * 24))
+                backtest_z2 = uniswapStrategyBacktest(pool, z2["proportion"] * investmentAmount,
+                                                      z2["bottom"], z2["top"],
+                                                      prices["periodStartUnix"].values[i - time2 + 1],
+                                                      prices["periodStartUnix"].values[i],
+                                                      protocol=protocol, priceToken=priceToken, period="hourly")
+                data2.extend(backtest_z2)
+                time2 = 1
+                fees = 0
+                for j in range(len(backtest_z2)):
+                    fees += backtest_z2[j]["feeUSD"]
+                investmentAmount = backtest_z2[-1]["amountV"] + fees
+                update_z2 = True
+
+            if i == (len(prices) - 1):
+                break
+
+            analyzer(z1, z2, z1_width, z2_width, symbol, prices["periodStartUnix"].values[i],
+                     float(prices["close"].values[i]), 365, update_z1, update_z2)
+
+    fees = 0
+    for j in range(len(data1)):
+        fees = fees + data1[j]["feeUSD"] + data2[j]["feeUSD"]
+        closes.append(data1[j]["close"])
+        amount.append(data1[j]["amountV"] + data2[j]["amountV"])
+        fee.append(fees)
+        times.append((data1[j]["unixDT"] - prices["periodStartUnix"].values[0]) / (3600 * 24))
+    plotter(minBound, maxBound, xMin, xMax, fee, closes, amount, times)
 
 
 if __name__ == "__main__":
-    days = 20
-
+    days = 60
     priceToken = 1
     minRange = 1900
     maxRange = 2100
     investmentAmount = 100000
-
-    # data = uniswapStrategyBacktest("0x4e68Ccd3E89f51C3074ca5072bbAC773960dFa36".lower(), investmentAmount,
+    pool = "0x4e68Ccd3E89f51C3074ca5072bbAC773960dFa36".lower()
+    # data = uniswapStrategyBacktest(pool, investmentAmount,
     #                                     minRange, maxRange, days=days, priceToken=priceToken, period="hourly")
-
-    csv_data_saver(pool_id, days)
 
     # fee = []
     # closes = []
@@ -313,12 +459,17 @@ if __name__ == "__main__":
     # plotter([minRange], [maxRange], [0], [days], fee, closes, amount, times)
     # print(json.dumps(data, indent=2))
 
-    # _2_pos_strategy(100, 180, "0x4e68Ccd3E89f51C3074ca5072bbAC773960dFa36".lower(), investmentAmount, days=days,
+    # _2_pos_strategy(100, 250, "0x4e68Ccd3E89f51C3074ca5072bbAC773960dFa36".lower(), investmentAmount, days=days,
     #                         priceToken=1)
 
-    # _X_percent_ITM_strategy(95, 10, "0x4e68Ccd3E89f51C3074ca5072bbAC773960dFa36".lower(), investmentAmount, days=days,
-    #                         priceToken=1)
-    normal_distribution_strategy(100, pool_id, investmentAmount, days, priceToken)
+    _X_percent_ITM_strategy(65, 12, pool, investmentAmount, days=days,
+                            priceToken=1)
+
+    # relative_volume_strategy(z1_width=5, z2_width=10, percent_itm=100, symbol="ETHUSDT", pool=pool,
+    #                          investmentAmount=investmentAmount, endTimestamp=now, days=days,
+    #                          protocol=0, priceToken=1)
+
+    # normal_distribution_strategy(100, "0x4e68Ccd3E89f51C3074ca5072bbAC773960dFa36".lower(), investmentAmount, days, priceToken)
 
 # 0x4e68Ccd3E89f51C3074ca5072bbAC773960dFa36  USDT / WETH 0.3
 # 0x88e6a0c2ddd26feeb64f039a2c41296fcb3f5640  WETH / USDC 0.05

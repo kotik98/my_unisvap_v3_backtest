@@ -4,14 +4,10 @@ import time
 
 from strategy_backtest import DateByDaysAgo
 
-pool_id = "0x4e68Ccd3E89f51C3074ca5072bbAC773960dFa36".lower()
-from_date = 1651611600
-to_date = 1654290000
-
 now = int(time.time())
 
 
-def urlForProtocol(protocol=0):
+def urlForProtocol(protocol):
     if protocol == 1:
         return "https://api.thegraph.com/subgraphs/name/ianlapham/optimism-post-regenesis"
     elif protocol == 2:
@@ -67,16 +63,16 @@ def getPoolHourData(pool, from_date, to_date, protocol=0):
 def csv_data_saver(pool, days, end_timestamp=now, protocol=0):
     from_date = DateByDaysAgo(days, end_timestamp)
     data = pd.DataFrame(getPoolHourData(pool, from_date, end_timestamp, protocol))
-    data.to_csv("pool_hour_data.csv")
+    data.to_csv("data/pool_hour_data.csv")
 
 
 def get_pool_hour_data_from_csv(startTimestamp, endTimestamp):
-    data = pd.read_csv("pool_hour_data.csv")
+    data = pd.read_csv("data/pool_hour_data.csv")
     for i in range(len(data)):
         if data["periodStartUnix"].values[i] == startTimestamp:
             low_index = i
-        if endTimestamp - data["periodStartUnix"].values[-1] < 3600: # округление до ближайшего часа
-            high_index = i + 1
+        if abs(endTimestamp - data["periodStartUnix"].values[i]) < 3600:    # округление до ближайшего часа
+            high_index = i
     return data[low_index:high_index]
 
 
@@ -137,4 +133,9 @@ def poolById(pool, protocol=0):
         return
 
 
-#csv_data_saver("0x4e68Ccd3E89f51C3074ca5072bbAC773960dFa36".lower(), from_date, to_date)
+
+if __name__ == "__main__":
+    pool_id = "0x4e68Ccd3E89f51C3074ca5072bbAC773960dFa36".lower()
+    from_date = 1651611600
+    to_date = 1654290000
+    #csv_data_saver("0x4e68Ccd3E89f51C3074ca5072bbAC773960dFa36".lower(), from_date, to_date)

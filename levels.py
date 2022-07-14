@@ -315,12 +315,13 @@ def get_levels(symbol, interval, date_from, date_to):
         current_price += price_step
     result = sorted(lvls_result, key=lambda x: x[1] - x[2], reverse=True)
     filtered = group_lvls(result, 5 * perc_price_step)
+    filtered = sorted(filtered, key=lambda x: x[0])
     # filtered = filtered[:int(2/3*len(filtered))]
     return filtered, klines
 
 
 if __name__ == "__main__":
-    data, klines = get_levels("ETHUSDT", "1h", "1 Jan 2020", "1 Jan 2021")
+    data, klines = get_levels("ETHUSDT", "1h", "1 Jul 2021", "1 Jul 2022")
     fig, ax = plt.subplots(figsize=(30, 15))
     with open("data/levels.txt", "w") as file1:
         for lvl in data:

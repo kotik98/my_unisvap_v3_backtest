@@ -17,7 +17,7 @@ def getData(client, symbol, interval, date_from, date_to):
 def volume_for_bounds(trading_volume, bounds_min, bounds_max):
     volume = 0
     for i in range(len(trading_volume[1])):
-        if trading_volume[1][i] < bounds_max and trading_volume[1][i] > bounds_min:
+        if bounds_max > trading_volume[1][i] > bounds_min:
             volume = volume + trading_volume[0][i]
     return volume
 
@@ -62,7 +62,16 @@ def relative_volume_plot(trading_volume):
         ax.fill_between(np.arange(levels[j], levels[j + 1], 1), 0, rel_volume, color='b', alpha=.5)
     plt.show()
 
+
+def relative_volume(symbol, interval, date_from, date_to, levels):
+    trading_volume = get_volume_data(symbol, interval, date_from, date_to)
+    rel_vol = []
+    for j in range(len(levels) - 1):
+        rel_vol.append(volume_for_bounds(trading_volume, levels[j][0], levels[j + 1][0]) / abs(levels[j + 1][0] - levels[j][0]))
+    return rel_vol
+
+
 if __name__ == "__main__":
-    trading_volume = get_volume_data("ETHUSDT", "1h", "1 Jan 2020", "1 Jan 2021")
+    trading_volume = get_volume_data("ETHUSDT", "1h", "1 Jul 2021", "1 Jul 2022")
     volume_visualization(trading_volume, 80)
     relative_volume_plot(trading_volume)
