@@ -320,10 +320,10 @@ def analyzer(z1, z2, z1_width, z2_width, symbol, from_date, current_price, days,
     while current_price > levels[k + 1][0]:
         k += 1
     right_max = k + 1
-    while right_max < len(rel_vol) - 1 and rel_vol[right_max] < rel_vol[right_max + 1]:
+    while right_max < len(rel_vol) - 1 and rel_vol[right_max - 1] < rel_vol[right_max] > rel_vol[right_max + 1]:
         right_max += 1
     left_max = k
-    while left_max > 0 and rel_vol[left_max] < rel_vol[left_max - 1]:
+    while left_max > 0 and rel_vol[left_max + 1] < rel_vol[left_max] > rel_vol[left_max - 1]:
         left_max -= 1
     if update_z1:
         z1["bottom"] = levels[k][0]
@@ -394,7 +394,8 @@ def relative_volume_strategy(z1_width, z2_width, percent_itm, symbol, pool, inve
                 fees = 0
                 for j in range(len(backtest_z1)):
                     fees += backtest_z1[j]["feeUSD"]
-                investmentAmount = backtest_z1[-1]["amountV"] + fees
+                investmentAmount *= (1 - z1["proportion"])
+                investmentAmount += (backtest_z1[-1]["amountV"] + fees)
                 update_z1 = True
 
             if z2["bottom"] > float(prices["close"].values[i]) or float(prices["close"].values[i]) > z2["top"] or i == (
@@ -416,7 +417,8 @@ def relative_volume_strategy(z1_width, z2_width, percent_itm, symbol, pool, inve
                 fees = 0
                 for j in range(len(backtest_z2)):
                     fees += backtest_z2[j]["feeUSD"]
-                investmentAmount = backtest_z2[-1]["amountV"] + fees
+                investmentAmount *= (1 - z2["proportion"])
+                investmentAmount += (backtest_z2[-1]["amountV"] + fees)
                 update_z2 = True
 
             if i == (len(prices) - 1):
@@ -462,12 +464,12 @@ if __name__ == "__main__":
     # _2_pos_strategy(100, 250, "0x4e68Ccd3E89f51C3074ca5072bbAC773960dFa36".lower(), investmentAmount, days=days,
     #                         priceToken=1)
 
-    _X_percent_ITM_strategy(65, 12, pool, investmentAmount, days=days,
-                            priceToken=1)
+    # _X_percent_ITM_strategy(65, 12, pool, investmentAmount, days=days,
+    #                         priceToken=1)
 
-    # relative_volume_strategy(z1_width=5, z2_width=10, percent_itm=100, symbol="ETHUSDT", pool=pool,
-    #                          investmentAmount=investmentAmount, endTimestamp=now, days=days,
-    #                          protocol=0, priceToken=1)
+    relative_volume_strategy(z1_width=7, z2_width=13, percent_itm=85, symbol="ETHUSDT", pool=pool,
+                             investmentAmount=investmentAmount, endTimestamp=now, days=days,
+                             protocol=0, priceToken=1)
 
     # normal_distribution_strategy(100, "0x4e68Ccd3E89f51C3074ca5072bbAC773960dFa36".lower(), investmentAmount, days, priceToken)
 
