@@ -299,17 +299,16 @@ def candlestick2_ohlc_binance(ax, binance_klines, width=4, colorup='g', colordow
     return rangeCollection, barCollection
 
 
-def get_levels(symbol, interval, date_from, date_to):
-    client = Client()
-    klines = get_klines(client, symbol, interval, date_from, date_to)
-    initial_price = min(klines.close)
-    final_price = max(klines.close)
+def get_levels(kline_data):
+    kl = split_db_klines_basic_data(kline_data, 0)
+    initial_price = min(kl.close)
+    final_price = max(kl.close)
     current_price = initial_price
-    price_step, perc_price_step = get_price_step(klines)
+    price_step, perc_price_step = get_price_step(kl)
 
     lvls_result = []
     while current_price < final_price:
-        price_points, price_breakdowns = measure_price_as_level(current_price, price_step, klines)
+        price_points, price_breakdowns = measure_price_as_level(current_price, price_step, kl)
         if price_points - price_breakdowns > 0:
             lvls_result.append([current_price, price_points, price_breakdowns])
         current_price += price_step
@@ -317,7 +316,7 @@ def get_levels(symbol, interval, date_from, date_to):
     filtered = group_lvls(result, 5 * perc_price_step)
     filtered = sorted(filtered, key=lambda x: x[0])
     # filtered = filtered[:int(2/3*len(filtered))]
-    return filtered, klines
+    return filtered
 
 
 if __name__ == "__main__":

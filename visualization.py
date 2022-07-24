@@ -21,7 +21,7 @@ def plotter(minRange, maxRange, xMin, xMax, fee, closes, amount, times):
     plt.show()
 
 
-def plotter_for_2_pos_strategy(minRange, maxRange, xMin, xMax, fee, closes, amount, times, actual_fee):
+def plotter_reinvesting(minRange, maxRange, xMin, xMax, fee, closes, amount, times, actual_fee):
     fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(15, 10))
     ax1.plot(times, fee)
     ax1.set_title("feeUSD")

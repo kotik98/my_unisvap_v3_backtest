@@ -63,11 +63,21 @@ def relative_volume_plot(trading_volume):
     plt.show()
 
 
-def relative_volume(symbol, interval, date_from, date_to, levels):
-    trading_volume = get_volume_data(symbol, interval, date_from, date_to)
+def relative_volume(kline_data, levels):
+    frame = pd.DataFrame(kline_data)
+    frame = frame.iloc[:, :6]
+    frame.columns = ['Time', 'Open', 'High', 'Low', 'Close', 'Volume']
+    frame = frame.set_index('Time')
+    frame.index = pd.to_datetime(frame.index, unit='ms')
+    frame = frame.astype(float)
+    trading_volume = np.ndarray((2, len(frame)))
+    for i in range(len(frame)):
+        trading_volume[0][i] = frame.Volume[i] * frame.Close[i]
+        trading_volume[1][i] = frame.Close[i]
     rel_vol = []
     for j in range(len(levels) - 1):
-        rel_vol.append(volume_for_bounds(trading_volume, levels[j][0], levels[j + 1][0]) / abs(levels[j + 1][0] - levels[j][0]))
+        rel_vol.append(
+            volume_for_bounds(trading_volume, levels[j][0], levels[j + 1][0]) / abs(levels[j + 1][0] - levels[j][0]))
     return rel_vol
 
 

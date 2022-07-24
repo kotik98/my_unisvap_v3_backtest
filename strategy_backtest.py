@@ -8,7 +8,7 @@ from volume_data import *
 import numpy as np
 import calendar
 from datetime import datetime
-
+from binance.client import Client
 from visualization import *
 
 now = int(time.time())
@@ -66,6 +66,8 @@ def _X_percent_ITM_strategy(percent_itm, width, pool, investmentAmount, endTimes
     xMax = []
     minBound = []
     maxBound = []
+    relocations = []
+    actual_fee = []
     data = []
     for i in range(len(prices)):
         if (current_price * ((100 - width) / 100)) < float(prices["close"].values[i]) < (
@@ -84,6 +86,7 @@ def _X_percent_ITM_strategy(percent_itm, width, pool, investmentAmount, endTimes
                                                     prices["periodStartUnix"].values[i],
                                                     protocol=protocol, priceToken=priceToken, period="hourly")
             data.extend(backtest_data)
+            relocations.append(i + 1)
             fees = 0
             for j in range(len(backtest_data)):
                 fees = fees + backtest_data[j]["feeUSD"]
@@ -92,13 +95,20 @@ def _X_percent_ITM_strategy(percent_itm, width, pool, investmentAmount, endTimes
             investmentAmount = data[-1]["amountV"] + fees
             current_price = float(prices["close"].values[i])
     fees = 0
+    actual_fees = 0
+    k = 0
     for j in range(len(data)):
+        actual_fees = actual_fees + data[j]["feeUSD"]
+        if j == relocations[k]:
+            k += 1
+            actual_fees = 0
         fees = fees + data[j]["feeUSD"]
         closes.append(data[j]["close"])
         amount.append(data[j]["amountV"])
         fee.append(fees)
+        actual_fee.append(actual_fees)
         times.append((data[j]["unixDT"] - prices["periodStartUnix"].values[0]) / (3600 * 24))
-    plotter(minBound, maxBound, xMin, xMax, fee, closes, amount, times)
+    plotter_reinvesting(minBound, maxBound, xMin, xMax, fee, closes, amount, times, actual_fee)
 
 
 def _2_pos_strategy(percent_itm, width, pool, investmentAmount, endTimestamp=now, days=30, protocol=0, priceToken=0):
@@ -110,7 +120,6 @@ def _2_pos_strategy(percent_itm, width, pool, investmentAmount, endTimestamp=now
     fee = []
     closes = []
     amount = []
-    fees = 0
     times = []
     xMin = []
     xMax = []
@@ -164,17 +173,17 @@ def _2_pos_strategy(percent_itm, width, pool, investmentAmount, endTimestamp=now
     actual_fees = 0
     k = 0
     for j in range(len(data_top)):
+        fees = fees + data_top[j]["feeUSD"] + data_bottom[j]["feeUSD"]
+        actual_fees = actual_fees + data_top[j]["feeUSD"] + data_bottom[j]["feeUSD"]
         if j == relocations[k]:
             k += 1
             actual_fees = 0
-        fees = fees + data_top[j]["feeUSD"] + data_bottom[j]["feeUSD"]
-        actual_fees = actual_fees + data_top[j]["feeUSD"] + data_bottom[j]["feeUSD"]
         closes.append(data_top[j]["close"])
         amount.append(data_top[j]["amountV"] + data_bottom[j]["amountV"])
         fee.append(fees)
         actual_fee.append(actual_fees)
         times.append((data_top[j]["unixDT"] - prices["periodStartUnix"].values[0]) / (3600 * 24))
-    plotter_for_2_pos_strategy(minBound, maxBound, xMin, xMax, fee, closes, amount, times, actual_fee)
+    plotter_reinvesting(minBound, maxBound, xMin, xMax, fee, closes, amount, times, actual_fee)
 
 
 def _simple_bounds_strategy(width, pool_id, Amount, days, priceToken, endTimestamp=now, protocol=0,
@@ -294,20 +303,10 @@ def normal_distribution_strategy(sigma, pool_id, Amount, days, priceToken, endTi
     plotter(low_bound, high_bound, start / (3600 * 24), end / (3600 * 24), fees, closes, amount, times / (3600 * 24))
 
 
-def get_lvls_and_rel_vol(symbol, from_date, days_ago=365):
-    curr_date = datetime.fromtimestamp(from_date)
-    past_date = datetime.fromtimestamp(from_date - (days_ago * 24 * 3600))
-    past_month_name = calendar.month_abbr[past_date.month]
-    current_month_name = calendar.month_abbr[curr_date.month]
-    levels, _ = get_levels(symbol, "1h", "{} {} {}".format(past_date.day, past_month_name, past_date.year),
-                           "{} {} {}".format(curr_date.day, current_month_name, curr_date.year))
-    rel_vol = relative_volume(symbol, "1h", "{} {} {}".format(past_date.day, past_month_name, past_date.year),
-                              "{} {} {}".format(curr_date.day, current_month_name, curr_date.year), levels)
-    return levels, rel_vol
-
-
-def analyzer(z1, z2, z1_width, z2_width, symbol, from_date, current_price, days, update_z1, update_z2):
-    levels, rel_vol = get_lvls_and_rel_vol(symbol, from_date, days)
+def analyzer(z1, z2, z1_width, z2_width, from_date, current_price, days, update_z1, update_z2, kline_data):
+    klines = [x for x in kline_data if (from_date - (days * 24 * 3600)) < (x[0] / 1000) < from_date]
+    levels = get_levels(klines)
+    rel_vol = relative_volume(klines, levels)
     if current_price < levels[1][0] or current_price > levels[len(levels) - 2][0]:
         if update_z2:
             z2["bottom"] = current_price * ((100 - z2_width) / 100)
@@ -352,6 +351,8 @@ def relative_volume_strategy(z1_width, z2_width, percent_itm, symbol, pool, inve
     maxBound = []
     data1 = []
     data2 = []
+    relocations = []
+    actual_fee = []
     z1 = {
         "proportion": .5,
         "bottom": None,
@@ -362,7 +363,15 @@ def relative_volume_strategy(z1_width, z2_width, percent_itm, symbol, pool, inve
         "bottom": None,
         "top": None
     }
-    analyzer(z1, z2, z1_width, z2_width, symbol, from_date, float(prices["close"].values[0]), 365, True, True)
+    client = Client()
+    curr_date = datetime.fromtimestamp(endTimestamp)
+    past_date = datetime.fromtimestamp(endTimestamp - ((days + 365) * 24 * 3600))
+    past_month_name = calendar.month_abbr[past_date.month]
+    current_month_name = calendar.month_abbr[curr_date.month]
+    kline_data = client.get_historical_klines(symbol, "1h",
+                                              "{} {} {}".format(past_date.day, past_month_name, past_date.year),
+                                              "{} {} {}".format(curr_date.day, current_month_name, curr_date.year))
+    analyzer(z1, z2, z1_width, z2_width, from_date, float(prices["close"].values[0]), 365, True, True, kline_data)
     for i in range(len(prices)):
         if z1["bottom"] < float(prices["close"].values[i]) < z1["top"]:
             time_itm += 1
@@ -374,6 +383,9 @@ def relative_volume_strategy(z1_width, z2_width, percent_itm, symbol, pool, inve
 
             update_z1 = False
             update_z2 = False
+            delta_plus = 0
+            delta_minus = 0
+            sum_fee = 0
 
             if (time_itm / time1) < (percent_itm / 100) or i == (len(prices) - 1):
 
@@ -394,8 +406,9 @@ def relative_volume_strategy(z1_width, z2_width, percent_itm, symbol, pool, inve
                 fees = 0
                 for j in range(len(backtest_z1)):
                     fees += backtest_z1[j]["feeUSD"]
-                investmentAmount *= (1 - z1["proportion"])
-                investmentAmount += (backtest_z1[-1]["amountV"] + fees)
+                sum_fee += fees
+                delta_minus += investmentAmount * (1 - z1["proportion"])
+                delta_plus += (backtest_z1[-1]["amountV"] + fees)
                 update_z1 = True
 
             if z2["bottom"] > float(prices["close"].values[i]) or float(prices["close"].values[i]) > z2["top"] or i == (
@@ -417,28 +430,38 @@ def relative_volume_strategy(z1_width, z2_width, percent_itm, symbol, pool, inve
                 fees = 0
                 for j in range(len(backtest_z2)):
                     fees += backtest_z2[j]["feeUSD"]
-                investmentAmount *= (1 - z2["proportion"])
-                investmentAmount += (backtest_z2[-1]["amountV"] + fees)
+                sum_fee += fees
+                delta_minus += investmentAmount * (1 - z2["proportion"])
+                delta_plus += (backtest_z2[-1]["amountV"] + fees)
                 update_z2 = True
+            investmentAmount = investmentAmount - delta_minus + delta_plus
+            relocations.append((i, sum_fee))
 
             if i == (len(prices) - 1):
                 break
 
-            analyzer(z1, z2, z1_width, z2_width, symbol, prices["periodStartUnix"].values[i],
-                     float(prices["close"].values[i]), 365, update_z1, update_z2)
+            analyzer(z1, z2, z1_width, z2_width, prices["periodStartUnix"].values[i],
+                     float(prices["close"].values[i]), 365, update_z1, update_z2, kline_data)
 
     fees = 0
+    actual_fees = 0
+    k = 0
     for j in range(len(data1)):
+        actual_fees = actual_fees + data1[j]["feeUSD"] + data2[j]["feeUSD"]
+        if j == relocations[k][0]:
+            actual_fees -= relocations[k][1]
+            k += 1
+        actual_fee.append(actual_fees)
         fees = fees + data1[j]["feeUSD"] + data2[j]["feeUSD"]
         closes.append(data1[j]["close"])
         amount.append(data1[j]["amountV"] + data2[j]["amountV"])
         fee.append(fees)
         times.append((data1[j]["unixDT"] - prices["periodStartUnix"].values[0]) / (3600 * 24))
-    plotter(minBound, maxBound, xMin, xMax, fee, closes, amount, times)
+    plotter_reinvesting(minBound, maxBound, xMin, xMax, fee, closes, amount, times, actual_fee)
 
 
 if __name__ == "__main__":
-    days = 60
+    days = 40
     priceToken = 1
     minRange = 1900
     maxRange = 2100
@@ -464,14 +487,16 @@ if __name__ == "__main__":
     # _2_pos_strategy(100, 250, "0x4e68Ccd3E89f51C3074ca5072bbAC773960dFa36".lower(), investmentAmount, days=days,
     #                         priceToken=1)
 
-    # _X_percent_ITM_strategy(65, 12, pool, investmentAmount, days=days,
+    # _X_percent_ITM_strategy(95, 9, pool, investmentAmount, days=days,
     #                         priceToken=1)
 
     relative_volume_strategy(z1_width=7, z2_width=13, percent_itm=85, symbol="ETHUSDT", pool=pool,
                              investmentAmount=investmentAmount, endTimestamp=now, days=days,
                              protocol=0, priceToken=1)
 
-    # normal_distribution_strategy(100, "0x4e68Ccd3E89f51C3074ca5072bbAC773960dFa36".lower(), investmentAmount, days, priceToken)
+    #
+    # normal_distribution_strategy(100, "0x4e68Ccd3E89f51C3074ca5072bbAC773960dFa36".lower(), investmentAmount, days,
+    #                              priceToken)
 
 # 0x4e68Ccd3E89f51C3074ca5072bbAC773960dFa36  USDT / WETH 0.3
 # 0x88e6a0c2ddd26feeb64f039a2c41296fcb3f5640  WETH / USDC 0.05
