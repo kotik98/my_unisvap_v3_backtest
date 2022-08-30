@@ -53,7 +53,7 @@ def getPoolHourData(pool, from_date, to_date, protocol=0):
             res.extend(data["data"]["poolHourDatas"])
             if len(data["data"]["poolHourDatas"]) < 1000:
                 break
-        return res
+        return pd.DataFrame(res)
 
     except Exception as e:
         print(e)

@@ -20,10 +20,11 @@ def DateByDaysAgo(days, endDate=now):
 
 def uniswapStrategyBacktest(pool, investmentAmount, minRange, maxRange, startTimestamp=0, endTimestamp=now, days=30,
                             protocol=0, priceToken=0, period="hourly"):
-    poolData = poolById(pool)
+    poolData = poolById(pool, protocol)
     if startTimestamp == 0:
         startTimestamp = DateByDaysAgo(days, endTimestamp)
     backtestData = get_pool_hour_data_from_csv(startTimestamp, endTimestamp)
+    # backtestData = getPoolHourData(pool, startTimestamp, endTimestamp)
     if priceToken == 1:
         entryPrice = 1 / float(backtestData["close"].values[0])
         # decimal = int(poolData[0]["token0"]["decimals"]) - int(poolData[0]["token1"]["decimals"])
@@ -69,6 +70,7 @@ def _X_percent_ITM_strategy(percent_itm, width, pool, investmentAmount, endTimes
     relocations = []
     actual_fee = []
     data = []
+    replace_count = 0
     for i in range(len(prices)):
         if (current_price * ((100 - width) / 100)) < float(prices["close"].values[i]) < (
                 current_price * ((100 + width) / 100)):
@@ -92,8 +94,10 @@ def _X_percent_ITM_strategy(percent_itm, width, pool, investmentAmount, endTimes
                 fees = fees + backtest_data[j]["feeUSD"]
             time = 1
             time_itm = 1
-            investmentAmount = data[-1]["amountV"] + fees
+            investmentAmount = (data[-1]["amountV"] + fees) * .9985 - 100
             current_price = float(prices["close"].values[i])
+            replace_count += 1
+    print(replace_count)
     fees = 0
     actual_fees = 0
     k = 0
@@ -129,6 +133,7 @@ def _2_pos_strategy(percent_itm, width, pool, investmentAmount, endTimestamp=now
     relocations = []
     actual_fee = []
     data_bottom = []
+    replace_count = 0
     for i in range(len(prices)):
         if (current_price - width) < float(prices["close"].values[i]) < (current_price + width):
             time_itm += 1
@@ -169,6 +174,8 @@ def _2_pos_strategy(percent_itm, width, pool, investmentAmount, endTimestamp=now
                 current_price = current_price + width
             else:
                 current_price = current_price - width
+            replace_count += 1
+    print(replace_count)
     fees = 0
     actual_fees = 0
     k = 0
@@ -176,8 +183,8 @@ def _2_pos_strategy(percent_itm, width, pool, investmentAmount, endTimestamp=now
         fees = fees + data_top[j]["feeUSD"] + data_bottom[j]["feeUSD"]
         actual_fees = actual_fees + data_top[j]["feeUSD"] + data_bottom[j]["feeUSD"]
         if j == relocations[k]:
-            k += 1
             actual_fees = 0
+            k += 1
         closes.append(data_top[j]["close"])
         amount.append(data_top[j]["amountV"] + data_bottom[j]["amountV"])
         fee.append(fees)
@@ -353,6 +360,7 @@ def relative_volume_strategy(z1_width, z2_width, percent_itm, symbol, pool, inve
     data2 = []
     relocations = []
     actual_fee = []
+    replace_count = 0
     z1 = {
         "proportion": .5,
         "bottom": None,
@@ -410,6 +418,7 @@ def relative_volume_strategy(z1_width, z2_width, percent_itm, symbol, pool, inve
                 delta_minus += investmentAmount * (1 - z1["proportion"])
                 delta_plus += (backtest_z1[-1]["amountV"] + fees)
                 update_z1 = True
+                replace_count += 1
 
             if z2["bottom"] > float(prices["close"].values[i]) or float(prices["close"].values[i]) > z2["top"] or i == (
                     len(prices) - 1):
@@ -434,6 +443,8 @@ def relative_volume_strategy(z1_width, z2_width, percent_itm, symbol, pool, inve
                 delta_minus += investmentAmount * (1 - z2["proportion"])
                 delta_plus += (backtest_z2[-1]["amountV"] + fees)
                 update_z2 = True
+                replace_count += 1
+
             investmentAmount = investmentAmount - delta_minus + delta_plus
             relocations.append((i, sum_fee))
 
@@ -442,7 +453,7 @@ def relative_volume_strategy(z1_width, z2_width, percent_itm, symbol, pool, inve
 
             analyzer(z1, z2, z1_width, z2_width, prices["periodStartUnix"].values[i],
                      float(prices["close"].values[i]), 365, update_z1, update_z2, kline_data)
-
+    print(replace_count)
     fees = 0
     actual_fees = 0
     k = 0
@@ -461,15 +472,15 @@ def relative_volume_strategy(z1_width, z2_width, percent_itm, symbol, pool, inve
 
 
 if __name__ == "__main__":
-    days = 40
+    days = 365
     priceToken = 1
-    minRange = 1900
-    maxRange = 2100
+    minRange = 1169.17
+    maxRange = 2182.05
     investmentAmount = 100000
-    pool = "0x4e68Ccd3E89f51C3074ca5072bbAC773960dFa36".lower()
+    pool = "0x4ccd010148379ea531d6c587cfdd60180196f9b1".lower()
     # data = uniswapStrategyBacktest(pool, investmentAmount,
     #                                     minRange, maxRange, days=days, priceToken=priceToken, period="hourly")
-
+    #
     # fee = []
     # closes = []
     # amount = []
@@ -484,15 +495,14 @@ if __name__ == "__main__":
     # plotter([minRange], [maxRange], [0], [days], fee, closes, amount, times)
     # print(json.dumps(data, indent=2))
 
-    # _2_pos_strategy(100, 250, "0x4e68Ccd3E89f51C3074ca5072bbAC773960dFa36".lower(), investmentAmount, days=days,
-    #                         priceToken=1)
+    # _2_pos_strategy(100, 50, "0x4e68Ccd3E89f51C3074ca5072bbAC773960dFa36".lower(), investmentAmount, days=days, endTimestamp=1652572800,
+    #                         priceToken=priceToken)
 
-    # _X_percent_ITM_strategy(95, 9, pool, investmentAmount, days=days,
-    #                         priceToken=1)
+    _X_percent_ITM_strategy(100, 2.3, pool, investmentAmount, days=days, priceToken=priceToken, protocol=3)
 
-    relative_volume_strategy(z1_width=7, z2_width=13, percent_itm=85, symbol="ETHUSDT", pool=pool,
-                             investmentAmount=investmentAmount, endTimestamp=now, days=days,
-                             protocol=0, priceToken=1)
+    # relative_volume_strategy(z1_width=7, z2_width=13, percent_itm=85, symbol="ETHUSDT", pool=pool,
+    #                          investmentAmount=investmentAmount, endTimestamp=now, days=days,
+    #                          protocol=0, priceToken=priceToken)
 
     #
     # normal_distribution_strategy(100, "0x4e68Ccd3E89f51C3074ca5072bbAC773960dFa36".lower(), investmentAmount, days,
