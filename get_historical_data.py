@@ -2,9 +2,11 @@ import requests
 import pandas as pd
 import time
 
-from strategy_backtest import DateByDaysAgo
-
 now = int(time.time())
+
+
+def DateByDaysAgo(days, endDate=now):
+    return endDate - days * 86400
 
 
 def urlForProtocol(protocol):
@@ -66,12 +68,46 @@ def csv_data_saver(pool, days, end_timestamp=now, protocol=0):
     data.to_csv("data/pool_hour_data.csv")
 
 
+def process_historical_data(path):
+    decimals0 = 18
+    decimals1 = 6
+    data = pd.read_csv(path)
+    data.insert(0, 'close', [
+            int(data['sqrtPriceX96'].values[i]) * int(data['sqrtPriceX96'].values[i]) * (10 ** decimals0) / (
+            10 ** decimals1) / 2 ** 192 for i in range(len(data))])
+    data.insert(0, 'high', data['close'])
+    data.insert(0, 'low', data['close'])
+    data.insert(0, 'periodStartUnix', [int(data['UnixTime'].values[i]) // 1000 for i in range(len(data))])
+    data.insert(0, 'pool', [{'totalValueLockedToken0': int(data['balanceToken0'].values[i]) / (10 ** decimals0),
+                             'totalValueLockedToken1': int(data['balanceToken1'].values[i]) / (10 ** decimals1),
+                             'totalValueLockedUSD': (int(data['balanceToken0'].values[i]) / (10 ** decimals0) * (
+                                     int(data['sqrtPriceX96'].values[i]) * int(data['sqrtPriceX96'].values[i]) * (
+                                     10 ** decimals0) / (
+                                             10 ** decimals1) / 2 ** 192)) + int(data['balanceToken1'].values[
+                                                                                     i]) / (10 ** decimals1)} for i in
+                            range(len(data))])
+    data.to_csv('data/history_data.csv')
+    return data.iloc[-1]
+
+
+def get_historical_data_from_csv(startTimestamp, endTimestamp):
+    data = pd.read_csv("data/history_data.csv")
+    start = False
+    for i in range(len(data)):
+        if int(data["periodStartUnix"].values[i]) > startTimestamp and not start:
+            start = True
+            low_index = i
+        if abs(endTimestamp - int(data["periodStartUnix"].values[i])) < 15:
+            high_index = i
+    return data[low_index:high_index]
+
+
 def get_pool_hour_data_from_csv(startTimestamp, endTimestamp):
     data = pd.read_csv("data/pool_hour_data.csv")
     for i in range(len(data)):
         if data["periodStartUnix"].values[i] == startTimestamp:
             low_index = i
-        if abs(endTimestamp - data["periodStartUnix"].values[i]) < 3600:    # округление до ближайшего часа
+        if abs(endTimestamp - data["periodStartUnix"].values[i]) < 3600:  # округление до ближайшего часа
             high_index = i
     return data[low_index:high_index]
 
@@ -133,9 +169,9 @@ def poolById(pool, protocol=0):
         return
 
 
-
 if __name__ == "__main__":
     pool_id = "0x4e68Ccd3E89f51C3074ca5072bbAC773960dFa36".lower()
     from_date = 1651611600
     to_date = 1654290000
-    #csv_data_saver("0x4e68Ccd3E89f51C3074ca5072bbAC773960dFa36".lower(), from_date, to_date)
+    # csv_data_saver("0x4e68Ccd3E89f51C3074ca5072bbAC773960dFa36".lower(), from_date, to_date)
+    print(process_historical_data('data/history_data.csv'))

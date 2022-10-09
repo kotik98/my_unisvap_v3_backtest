@@ -10,6 +10,8 @@ import calendar
 from datetime import datetime
 from binance.client import Client
 from visualization import *
+import csv
+from ATRwithEMA import getATR
 
 now = int(time.time())
 
@@ -23,6 +25,7 @@ def uniswapStrategyBacktest(pool, investmentAmount, minRange, maxRange, startTim
     poolData = poolById(pool, protocol)
     if startTimestamp == 0:
         startTimestamp = DateByDaysAgo(days, endTimestamp)
+    # backtestData = get_historical_data_from_csv(startTimestamp, endTimestamp)
     backtestData = get_pool_hour_data_from_csv(startTimestamp, endTimestamp)
     # backtestData = getPoolHourData(pool, startTimestamp, endTimestamp)
     if priceToken == 1:
@@ -51,6 +54,14 @@ def getPrices(priceToken=0):
     return price
 
 
+def getHistoryPrices(startTimespamp, endTimestamp, priceToken=0):
+    price = get_historical_data_from_csv(startTimespamp, endTimestamp)
+    if priceToken == 1:
+        for i in range(len(price)):
+            price["close"].values[i] = 1 / float(price["close"].values[i])
+    return price
+
+
 def _X_percent_ITM_strategy(percent_itm, width, pool, investmentAmount, endTimestamp=now, days=30, protocol=0,
                             priceToken=0):
     csv_data_saver(pool, days, endTimestamp, protocol)
@@ -61,7 +72,6 @@ def _X_percent_ITM_strategy(percent_itm, width, pool, investmentAmount, endTimes
     fee = []
     closes = []
     amount = []
-    fees = 0
     times = []
     xMin = []
     xMax = []
@@ -94,7 +104,7 @@ def _X_percent_ITM_strategy(percent_itm, width, pool, investmentAmount, endTimes
                 fees = fees + backtest_data[j]["feeUSD"]
             time = 1
             time_itm = 1
-            investmentAmount = (data[-1]["amountV"] + fees) * .9985 - 100
+            investmentAmount = (data[-1]["amountV"] + fees) * .9985 - 0.05
             current_price = float(prices["close"].values[i])
             replace_count += 1
     print(replace_count)
@@ -107,7 +117,7 @@ def _X_percent_ITM_strategy(percent_itm, width, pool, investmentAmount, endTimes
             k += 1
             actual_fees = 0
         fees = fees + data[j]["feeUSD"]
-        closes.append(data[j]["close"])
+        # closes.append(data[j]["close"])
         amount.append(data[j]["amountV"])
         fee.append(fees)
         actual_fee.append(actual_fees)
@@ -471,13 +481,231 @@ def relative_volume_strategy(z1_width, z2_width, percent_itm, symbol, pool, inve
     plotter_reinvesting(minBound, maxBound, xMin, xMax, fee, closes, amount, times, actual_fee)
 
 
+def strategy_with_hedging(rebalancing_delta, health_factor, liquidation_treshold, investmentAmount, pool,
+                          endTimestamp=now, days=30,
+                          protocol=0, priceToken=0):
+    # prices = getHistoryPrices(DateByDaysAgo(days, endTimestamp), endTimestamp, priceToken)
+    csv_data_saver(pool, days, endTimestamp, protocol)
+    prices = getPrices(priceToken)
+    time = 0
+    current_price = float(prices["close"].values[0])
+    fee = []
+    closes = []
+    amount = []
+    times = []
+    xMin = []
+    xMax = []
+    minBound = []
+    maxBound = []
+    relocations = []
+    actual_fee = []
+    data = []
+    replace_count = 0
+    target_health_factor = health_factor / liquidation_treshold
+    collateral = investmentAmount * target_health_factor / (1 + target_health_factor)
+    borrowing = collateral / target_health_factor
+    pool_liquidity = investmentAmount - collateral + borrowing
+    collateral_price = current_price
+    prev_balance = investmentAmount
+    atr = getATR('MATICUSDT', Client.KLINE_INTERVAL_12HOUR, 14, int(prices["periodStartUnix"].values[0]) - 864000,
+                 int(prices["periodStartUnix"].values[0]))
+    with open('./data/trades.csv', 'w', newline='') as trades, open('./data/rewards.csv', 'w', newline='') as rewards:
+        trade_writer = csv.writer(trades)
+        reward_writer = csv.writer(rewards)
+        for i in range(len(prices)):
+            time += 1
+            if current_price - atr > float(prices["close"].values[i]) or float(
+                    prices["close"].values[i]) > current_price + atr or i == (len(prices) - 1):
+                minBound.append(current_price - atr)
+                maxBound.append(current_price + atr)
+                xMin.append(
+                    (prices["periodStartUnix"].values[i - time + 1] - prices["periodStartUnix"].values[0]) / (
+                            3600 * 24))
+                xMax.append((prices["periodStartUnix"].values[i] - prices["periodStartUnix"].values[0]) / (3600 * 24))
+                backtest_data = uniswapStrategyBacktest(pool, pool_liquidity, current_price - atr,
+                                                        current_price + atr,
+                                                        prices["periodStartUnix"].values[i - time + 1],
+                                                        prices["periodStartUnix"].values[i],
+                                                        protocol=protocol, priceToken=priceToken, period="hourly")
+                atr = getATR('MATICUSDT', Client.KLINE_INTERVAL_12HOUR, 14,
+                             int(prices["periodStartUnix"].values[i]) - 864000,
+                             int(prices["periodStartUnix"].values[i]))
+                data.extend(backtest_data)
+                relocations.append(i + 1)
+                fees = 0
+                for j in range(len(backtest_data)):
+                    fees = fees + backtest_data[j]["feeUSD"]
+                pool_liquidity = (data[-1]["amountV"] + fees)
+                current_price = float(prices["close"].values[i])
+                replace_count += 1
+                if abs(collateral / (
+                        borrowing * current_price / collateral_price) - target_health_factor) > rebalancing_delta:
+                    borrowing = borrowing * current_price / collateral_price
+                    collateral_price = current_price
+                    delta_collateral = (target_health_factor * (pool_liquidity - borrowing) - collateral) / (
+                            1 + target_health_factor)
+                    delta_borrowing = 2 / target_health_factor * (
+                            collateral + delta_collateral) - pool_liquidity + delta_collateral
+                    collateral += delta_collateral
+                    borrowing += delta_borrowing
+                    pool_liquidity = pool_liquidity + delta_borrowing - delta_collateral
+
+                if pool_liquidity + collateral - borrowing - prev_balance > 0:
+                    change = '+' + str(pool_liquidity + collateral - borrowing - prev_balance)
+                else:
+                    change = str(pool_liquidity + collateral - borrowing - prev_balance)
+                trade_writer.writerow([','.join((datetime.fromtimestamp(
+                    int(prices["periodStartUnix"].values[i - time + 1])).strftime(
+                    '%d/%m/%Y %H:%M:%S'), datetime.fromtimestamp(
+                    int(prices["periodStartUnix"].values[i])).strftime('%d/%m/%Y %H:%M:%S'), str(
+                    int(prices["periodStartUnix"].values[i - time + 1])), str(
+                    int(prices["periodStartUnix"].values[i])), 'L', change,
+                                                 str(pool_liquidity + collateral - borrowing)))])
+                if pool_liquidity + collateral - borrowing - investmentAmount > 0:
+                    cumulative = '+' + str(pool_liquidity + collateral - borrowing - investmentAmount)
+                else:
+                    cumulative = str(pool_liquidity + collateral - borrowing - investmentAmount)
+                reward_writer.writerow([','.join((datetime.fromtimestamp(
+                    int(prices["periodStartUnix"].values[i])).strftime(
+                    '%d/%m/%Y %H:%M:%S'), str(int(prices["periodStartUnix"].values[i])), cumulative))])
+                prev_balance = pool_liquidity + collateral - borrowing
+                time = 1
+
+    print(replace_count, pool_liquidity + collateral - borrowing)
+    fees = 0
+    actual_fees = 0
+    k = 0
+    for j in range(len(data)):
+        actual_fees = actual_fees + data[j]["feeUSD"]
+        if j == relocations[k]:
+            k += 1
+            actual_fees = 0
+        fees = fees + data[j]["feeUSD"]
+        if priceToken == 0:
+            closes.append(data[j]["close"])
+        else:
+            closes.append(1 / float(data[j]["close"]))
+        amount.append(data[j]["amountV"])
+        fee.append(fees)
+        actual_fee.append(actual_fees)
+        times.append((data[j]["unixDT"] - prices["periodStartUnix"].values[0]) / (3600 * 24))
+    plotter_reinvesting(minBound, maxBound, xMin, xMax, fee, closes, amount, times, actual_fee)
+
+
+
+def const_strategy_with_hedging(width, rebalancing_delta, health_factor, liquidation_treshold, investmentAmount, pool,
+                          endTimestamp=now, days=30,
+                          protocol=0, priceToken=0):
+    # prices = getHistoryPrices(DateByDaysAgo(days, endTimestamp), endTimestamp, priceToken)
+    csv_data_saver(pool, days, endTimestamp, protocol)
+    prices = getPrices(priceToken)
+    time = 0
+    current_price = float(prices["close"].values[0])
+    fee = []
+    closes = []
+    amount = []
+    times = []
+    xMin = []
+    xMax = []
+    minBound = []
+    maxBound = []
+    relocations = []
+    actual_fee = []
+    data = []
+    replace_count = 0
+    target_health_factor = health_factor / liquidation_treshold
+    collateral = investmentAmount * target_health_factor / (1 + target_health_factor)
+    borrowing = collateral / target_health_factor
+    pool_liquidity = investmentAmount - collateral + borrowing
+    collateral_price = current_price
+    prev_balance = investmentAmount
+    with open('./data/trades.csv', 'w', newline='') as trades, open('./data/rewards.csv', 'w', newline='') as rewards:
+        trade_writer = csv.writer(trades)
+        reward_writer = csv.writer(rewards)
+        for i in range(len(prices)):
+            time += 1
+            if current_price * ((100 - width) / 100) > float(prices["close"].values[i]) or float(
+                    prices["close"].values[i]) > current_price * ((100 + width) / 100) or i == (len(prices) - 1):
+                minBound.append(current_price * ((100 - width) / 100))
+                maxBound.append(current_price * ((100 + width) / 100))
+                xMin.append(
+                    (prices["periodStartUnix"].values[i - time + 1] - prices["periodStartUnix"].values[0]) / (
+                            3600 * 24))
+                xMax.append((prices["periodStartUnix"].values[i] - prices["periodStartUnix"].values[0]) / (3600 * 24))
+                backtest_data = uniswapStrategyBacktest(pool, pool_liquidity, current_price * ((100 - width) / 100),
+                                                        current_price * ((100 + width) / 100),
+                                                        prices["periodStartUnix"].values[i - time + 1],
+                                                        prices["periodStartUnix"].values[i],
+                                                        protocol=protocol, priceToken=priceToken, period="hourly")
+                data.extend(backtest_data)
+                relocations.append(i + 1)
+                fees = 0
+                for j in range(len(backtest_data)):
+                    fees = fees + backtest_data[j]["feeUSD"]
+                pool_liquidity = (data[-1]["amountV"] + fees)
+                current_price = float(prices["close"].values[i])
+                replace_count += 1
+                if abs(collateral / (
+                        borrowing * current_price / collateral_price) - target_health_factor) > rebalancing_delta:
+                    borrowing = borrowing * current_price / collateral_price
+                    collateral_price = current_price
+                    delta_collateral = (target_health_factor * (pool_liquidity - borrowing) - collateral) / (
+                            1 + target_health_factor)
+                    delta_borrowing = 2 / target_health_factor * (
+                            collateral + delta_collateral) - pool_liquidity + delta_collateral
+                    collateral += delta_collateral
+                    borrowing += delta_borrowing
+                    pool_liquidity = pool_liquidity + delta_borrowing - delta_collateral
+
+                if pool_liquidity + collateral - borrowing - prev_balance > 0:
+                    change = '+' + str(pool_liquidity + collateral - borrowing - prev_balance)
+                else:
+                    change = str(pool_liquidity + collateral - borrowing - prev_balance)
+                trade_writer.writerow([','.join((datetime.fromtimestamp(
+                    int(prices["periodStartUnix"].values[i - time + 1])).strftime(
+                    '%d/%m/%Y %H:%M:%S'), datetime.fromtimestamp(
+                    int(prices["periodStartUnix"].values[i])).strftime('%d/%m/%Y %H:%M:%S'), str(
+                    int(prices["periodStartUnix"].values[i - time + 1])), str(
+                    int(prices["periodStartUnix"].values[i])), 'L', change,
+                                                 str(pool_liquidity + collateral - borrowing)))])
+                if pool_liquidity + collateral - borrowing - investmentAmount > 0:
+                    cumulative = '+' + str(pool_liquidity + collateral - borrowing - investmentAmount)
+                else:
+                    cumulative = str(pool_liquidity + collateral - borrowing - investmentAmount)
+                reward_writer.writerow([','.join((datetime.fromtimestamp(
+                    int(prices["periodStartUnix"].values[i])).strftime(
+                    '%d/%m/%Y %H:%M:%S'), str(int(prices["periodStartUnix"].values[i])), cumulative))])
+                prev_balance = pool_liquidity + collateral - borrowing
+                time = 1
+
+    print(replace_count, pool_liquidity + collateral - borrowing)
+    fees = 0
+    actual_fees = 0
+    k = 0
+    for j in range(len(data)):
+        actual_fees = actual_fees + data[j]["feeUSD"]
+        if j == relocations[k]:
+            k += 1
+            actual_fees = 0
+        fees = fees + data[j]["feeUSD"]
+        if priceToken == 0:
+            closes.append(data[j]["close"])
+        else:
+            closes.append(1 / float(data[j]["close"]))
+        amount.append(data[j]["amountV"])
+        fee.append(fees)
+        actual_fee.append(actual_fees)
+        times.append((data[j]["unixDT"] - prices["periodStartUnix"].values[0]) / (3600 * 24))
+    plotter_reinvesting(minBound, maxBound, xMin, xMax, fee, closes, amount, times, actual_fee)
+
+
 if __name__ == "__main__":
-    days = 365
+    days = 270
     priceToken = 1
     minRange = 1169.17
     maxRange = 2182.05
-    investmentAmount = 100000
-    pool = "0x4ccd010148379ea531d6c587cfdd60180196f9b1".lower()
+    investmentAmount = 1200
+    pool = "0x9B08288C3Be4F62bbf8d1C20Ac9C5e6f9467d8B7".lower()
     # data = uniswapStrategyBacktest(pool, investmentAmount,
     #                                     minRange, maxRange, days=days, priceToken=priceToken, period="hourly")
     #
@@ -498,7 +726,8 @@ if __name__ == "__main__":
     # _2_pos_strategy(100, 50, "0x4e68Ccd3E89f51C3074ca5072bbAC773960dFa36".lower(), investmentAmount, days=days, endTimestamp=1652572800,
     #                         priceToken=priceToken)
 
-    _X_percent_ITM_strategy(100, 2.3, pool, investmentAmount, days=days, priceToken=priceToken, protocol=3)
+    # _X_percent_ITM_strategy(100, 3, pool, investmentAmount, days=days, priceToken=priceToken, protocol=3,
+    #                         endTimestamp=1656909817)
 
     # relative_volume_strategy(z1_width=7, z2_width=13, percent_itm=85, symbol="ETHUSDT", pool=pool,
     #                          investmentAmount=investmentAmount, endTimestamp=now, days=days,
@@ -507,6 +736,11 @@ if __name__ == "__main__":
     #
     # normal_distribution_strategy(100, "0x4e68Ccd3E89f51C3074ca5072bbAC773960dFa36".lower(), investmentAmount, days,
     #                              priceToken)
+    # strategy_with_hedging(0.04, 1.14, 0.85, investmentAmount, pool, days=days, endTimestamp=1664878126, protocol=3,
+    #                       priceToken=priceToken)
+    const_strategy_with_hedging(7, 0.04, 1.14, 0.85, investmentAmount, pool, days=days, endTimestamp=1664878126, protocol=3,
+                          priceToken=priceToken)
+    # print(getATR('MATICUSDT', Client.KLINE_INTERVAL_12HOUR, 14, 1664844713 - 864000, 1664844713))
 
 # 0x4e68Ccd3E89f51C3074ca5072bbAC773960dFa36  USDT / WETH 0.3
 # 0x88e6a0c2ddd26feeb64f039a2c41296fcb3f5640  WETH / USDC 0.05
